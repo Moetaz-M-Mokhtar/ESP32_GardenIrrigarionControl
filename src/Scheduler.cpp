@@ -2,6 +2,7 @@
 #include<Scheduler.hpp>
 #include<CfgM.hpp>
 #include<TimerCtrl.hpp>
+#include<HwAbstr.hpp>
 /**************************************** define ***************************************/
 
 /********************************* local type definition *******************************/
@@ -16,6 +17,14 @@ Scheduler_Alarm alarmsList[6] =
     Scheduler_Alarm(19, 40, 20, 0xFE, 1, true),
     Scheduler_Alarm(20, 20, 20, 0xFE, 2, true)
 };
+
+SprinklerDt sprinklerList[3] = 
+{
+    { GPIO_NUM_16 }, // sprinkler 0
+    { GPIO_NUM_17 }, // sprinkler 1
+    { GPIO_NUM_18 } // sprinkler 2
+};
+
 /******************************* local function declaration *****************************/
 static void Scheduler_updateAlarmStatus(void);
 static void Scheduler_loadNextEvent(void);
@@ -24,29 +33,31 @@ static void Scheduler_loadNextEvent(void);
 static void Scheduler_loadNextEvent(void)
 {
     uint32_t minTimeNextEvent = 0xFFFFFFFF;
-    uint32_t tempTimeOfNextEventAlarm = 0xFFFFFFFF;
+    uint32_t tempTimeOfNextEventAlarm;
     uint8_t alarmCount = sizeof(alarmsList) / sizeof(alarmsList[0]);
-    uint8_t nextEventIdx = 0;
+    uint8_t tempReturnValue = 0;
     bool isTimeValid = false;
+
     
     for(uint8_t loopIndex = 0; loopIndex < alarmCount; loopIndex++)
     {
-        if(alarmsList[loopIndex].isEventActive() == true)
+        tempReturnValue = alarmsList[loopIndex].nextTriggerTime(&tempTimeOfNextEventAlarm);
+        
+        if ((tempReturnValue == true) && \
+            (tempTimeOfNextEventAlarm < minTimeNextEvent))
         {
             isTimeValid = true;
-            tempTimeOfNextEventAlarm = alarmsList[loopIndex].timeToNextTrigger();
-            
-            if (tempTimeOfNextEventAlarm < minTimeNextEvent)
-            {
-                minTimeNextEvent = tempTimeOfNextEventAlarm;
-                nextEventIdx = loopIndex;
-            }
+            minTimeNextEvent = tempTimeOfNextEventAlarm;
         }
     }
     
     if(isTimeValid == true)
     {
-        TimerCtrl_setAlarm(TIMER1_INDEX, DateTime(SECONDS_FROM_1970_TO_2000 + minTimeNextEvent));
+        TimerCtrl_setAlarm(TIMER1_INDEX, DateTime(minTimeNextEvent));
+    }
+    else
+    {
+        TimerCtrl_setAlarm(TIMER1_INDEX, TimerCtrl_getCurrentTime() + TimeSpan(180 * 60));
     }
 }
 
@@ -54,7 +65,6 @@ static void Scheduler_updateAlarmStatus(void)
 {
     DateTime currentTime = TimerCtrl_getCurrentTime();
     uint8_t alarmCount = sizeof(alarmsList) / sizeof(alarmsList[0]);
-    DateTime alarmTime;
 
     for(uint8_t loopIndex = 0; loopIndex < alarmCount; loopIndex++)
     {
@@ -62,35 +72,88 @@ static void Scheduler_updateAlarmStatus(void)
     }
 }
 
-/****************************** global function declaration ****************************/
-uint32_t Scheduler_Alarm::timeToNextTrigger(void)
+static void Scheduler_updateTaskCompleteAlarm(void)
 {
-    uint32_t returnValue = 0xFFFFFFFF;
+    uint32_t minTaskCompleteTime = 0xFFFFFFFF;
+    uint32_t tempTaskCompleteTime;
+    uint8_t alarmCount = sizeof(alarmsList) / sizeof(alarmsList[0]);
+    uint8_t tempReturnValue = 0;
+    bool isTimeValid = false;
+    for(uint8_t loopIndex = 0; loopIndex < alarmCount; loopIndex++)
+    {
+        tempReturnValue = alarmsList[loopIndex].taskCompleteTime(&tempTaskCompleteTime);
+        if ((tempReturnValue == true) && \
+            (tempTaskCompleteTime < minTaskCompleteTime))
+        {
+            isTimeValid = true;
+            minTaskCompleteTime = tempTaskCompleteTime;
+        }
+    }
+
+    if(isTimeValid == true)
+    {
+        TimerCtrl_setAlarm(TIMER2_INDEX, DateTime(minTaskCompleteTime));
+    }
+    else
+    {
+        TimerCtrl_resetAlarm(TIMER2_INDEX);
+    }
+}
+
+/****************************** global function declaration ****************************/
+uint8_t Scheduler_Alarm::nextTriggerTime(uint32_t* triggerTime)
+{
+    uint8_t returnValue = 0;
     DateTime currentTime = TimerCtrl_getCurrentTime();
     DateTime AlarmTime = DateTime(currentTime.year(), \
                                         currentTime.month(), \
                                         currentTime.day(), \
                                         this->hours, \
                                         this->minutes);
+    *triggerTime = 0xFFFFFFFF;
 
-    if(((this->dow >> (7 - AlarmTime.dayOfTheWeek()) & 0x01) == 1) &&
-        (AlarmTime > currentTime))
+    if(this->getEventEnabled() == true)
     {
-        returnValue = AlarmTime.secondstime() - currentTime.secondstime();
-    }
-    else
-    {
-        for(uint8_t loopIndex = 0; loopIndex < 7; loopIndex++)
+        if(((this->dow >> (7 - AlarmTime.dayOfTheWeek()) & 0x01) == 1) &&
+            (AlarmTime > currentTime))
         {
-            AlarmTime = AlarmTime + *(new TimeSpan(1,0,0,0));
-            if((this->dow >> (7 - AlarmTime.dayOfTheWeek()) & 0x01) == 1)
+            *triggerTime = AlarmTime.unixtime() - currentTime.unixtime();
+            returnValue = 1;
+        }
+        else
+        {
+            for(uint8_t loopIndex = 0; loopIndex < 7; loopIndex++)
             {
-                returnValue = AlarmTime.secondstime() - currentTime.secondstime();
-                break;
+                AlarmTime = AlarmTime + *(new TimeSpan(1,0,0,0));
+                if((this->dow >> (7 - AlarmTime.dayOfTheWeek()) & 0x01) == 1)
+                {
+                    returnValue = 1;
+                    *triggerTime = AlarmTime.unixtime() - currentTime.unixtime();
+                    break;
+                }
             }
         }
     }
     return returnValue;
+}
+
+uint8_t Scheduler_Alarm::taskCompleteTime(uint32_t* taskCompleteTime)
+{
+    uint8_t returnValue = 0;
+
+    if(this->alarmState == 1)
+    {
+        DateTime currentTime = TimerCtrl_getCurrentTime();
+        DateTime AlarmTime = DateTime(currentTime.year(), \
+                                        currentTime.month(), \
+                                        currentTime.day(), \
+                                        this->hours, \
+                                        this->minutes);
+        *taskCompleteTime = (AlarmTime + TimeSpan(this->period * 60)).unixtime();
+        returnValue = 1;
+    }
+
+    return returnValue;    
 }
 
 void Scheduler_Alarm::evaluateEventAction(DateTime currentTime)
@@ -102,21 +165,45 @@ void Scheduler_Alarm::evaluateEventAction(DateTime currentTime)
                                         this->minutes);
     DateTime alarmEndTime = alarmStartTime + TimeSpan(this->period * 60);
 
-    if((this->isEventActive() == true) && \
+    if((this->getEventEnabled() == true) && \
        ((currentTime > alarmStartTime) & (currentTime < alarmEndTime)))
     {
-        // set alarm action to active
+        this->alarmState = 1;
+        HWAbstr_updateGPIOPinState(sprinklerList[this->sprinklerIdx].pinNumber, HIGH);
     }
     else
     {
-        // set alarm action to passive
+        this->alarmState = 0;
+        HWAbstr_updateGPIOPinState(sprinklerList[this->sprinklerIdx].pinNumber, LOW);
     }
 
 }
 
-void Scheduler_Init(void)
+Scheduler_Alarm::Scheduler_Alarm(uint8_t h, uint8_t m, uint8_t period, uint8_t dow, uint8_t sprinklerIdx, uint8_t isEnabled)
 {
+    this->hours = h;
+    this->minutes = m;
+    this->sprinklerIdx = sprinklerIdx;
+    this->isEnabled = isEnabled;
+    this->dow = dow;
+    this->period = period;
+    this->alarmState = 0;
+    HWAbstr_updateGPIOPinState(sprinklerList[this->sprinklerIdx].pinNumber, LOW);
+}
 
+Scheduler_Alarm::~Scheduler_Alarm()
+{
+    HWAbstr_updateGPIOPinState(sprinklerList[this->sprinklerIdx].pinNumber, LOW);
+}
+
+void Scheduler_MainFunction(void)
+{
+    if(ErrM_GetFunctionPermission(ERRM_FUNC_TIMERCTRL) == true)
+    {
+        Scheduler_updateAlarmStatus();
+        Scheduler_loadNextEvent();
+        Scheduler_updateTaskCompleteAlarm();
+    }
 }
 
 
