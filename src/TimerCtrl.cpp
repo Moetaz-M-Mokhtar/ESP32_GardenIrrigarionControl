@@ -65,7 +65,7 @@ bool TimerCtrl_Init(void)
 
 void TimerCtrl_mainFunction()
 {
-    if(ErrM_GetFunctionPermission(ERRM_FUNC_SPRINKLE) == true)
+    if(ErrM_GetFunctionPermission(ERRM_FUNC_TIMERCTRL) == true)
     {
         DS3231CurrentTime = DS3231Handler.now();
     }
@@ -80,7 +80,7 @@ bool TimerCtrl_setAlarm(uint8_t alarmIndex, DateTime time)
 {
     bool OpStatus = true;
     
-    if(ErrM_GetFunctionPermission(ERRM_FUNC_SPRINKLE) == true)
+    if(ErrM_GetFunctionPermission(ERRM_FUNC_TIMERCTRL) == true)
     {
         if(alarmIndex == 1)
         {
@@ -107,7 +107,7 @@ bool TimerCtrl_resetAlarm(uint8_t alarmIndex)
 {
     bool OpStatus = true;
 
-    if(ErrM_GetFunctionPermission(ERRM_FUNC_SPRINKLE) == true)
+    if(ErrM_GetFunctionPermission(ERRM_FUNC_TIMERCTRL) == true)
     {
         if(alarmIndex == 1 || alarmIndex == 2)
         {

@@ -36,7 +36,7 @@ static ErrM_ErrorCfg ErrM_ErrorCfgList[ERRM_ERROR_COUNT] =
         //ERRM_RTC_NOT_CONNECTED
         0x10,                 //errID
         ERRM_CRITICAL,        //errType
-        ERRM_FUNC_SPRINKLE,   //functionInhibition
+        ERRM_FUNC_TIMERCTRL,   //functionInhibition
         "RTC not found"       //errorText
     },
     {
@@ -46,19 +46,52 @@ static ErrM_ErrorCfg ErrM_ErrorCfgList[ERRM_ERROR_COUNT] =
         ERRM_FUNC_NONE,      //functionInhibition
         "RTC lost power"
     },
+    {
+        //ERRM_SDCard_INIT
+        0x20,                //errID
+        ERRM_WARN,           //errType
+        ERRM_FUNC_NONE,      //functionInhibition
+        "SDCard Init failed"
+    },
+    {
+        //ERRM_SDCard_LOADING_FILE_FAILED
+        0x21,                //errID
+        ERRM_WARN,           //errType
+        ERRM_FUNC_NONE,      //functionInhibition
+        "SDCard Loading File Failed"
+    },
+    {
+        //ERRM_EEPROM_LOADING_FILE_FAILED
+        0x22,                //errID
+        ERRM_WARN,           //errType
+        ERRM_FUNC_NONE,      //functionInhibition
+        "EEPROM Loading File Failed"
+    },
+    {
+        //ERRM_FAILED_TO_LOAD_CFG
+        0x25,                //errID
+        ERRM_CRITICAL,       //errType
+        ERRM_FUNC_SCHEDULER,  //functionInhibition
+        "No configuration loaded"
+    }
 };
 
 static bool ErrM_ErrorStatus[ERRM_ERROR_COUNT] = 
 {
     false,  //ERRM_NO_ERROR
     false,  //ERRM_RTC_NOT_CONNECTED
-    false   //ERRM_RTC_LOST_POWER
+    false,  //ERRM_RTC_LOST_POWER
+    false,  //ERRM_SDCard_INIT
+    false,  //ERRM_SDCard_FileFetchFailed
+    false,  //ERRM_EEPROM_LOADING_FILE_FAILED
+    false   //ERRM_FAILED_TO_LOAD_CFG
 };
 
 static bool ErrM_FunctionPermission[ERRM_FUNC_COUNT] = 
 {
     false,  //ERRM_FUNC_NONE
-    true,   //ERRM_FUNC_SPRINKLE
+    true,   //ERRM_FUNC_SCHEDULER
+    true,   //ERRM_FUNC_TIMERCTRL
     true    //ERRM_FUNC_SPCONN
 };
 /******************************* local function declaration *****************************/
