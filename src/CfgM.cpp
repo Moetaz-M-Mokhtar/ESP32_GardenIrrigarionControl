@@ -21,20 +21,20 @@ JsonArray CFGM_scheduleCfg;
 /****************************** global function declaration ****************************/
 void CfgM_Init(void)
 {
-    JsonDocument CfgFile;
+    // JsonDocument CfgFile;
     
-    if(HwAbstr_GetCfgString(&CfgFile) == true)
-    {
-        /*************************FAIL POINT*******************************/
-        /* missing checks for configuration format validity
-        /******************************************************************/ 
-        CFGM_sprinklerCfg = CfgFile["sprinkler"].to<JsonArray>();
-        CFGM_scheduleCfg  = CfgFile["scheduler"].to<JsonArray>();
-    }
-    else
-    {
-        //no Cfgs available
-    }
+    // if(HwAbstr_GetCfgString(&CfgFile) == true)
+    // {
+    //     /*************************FAIL POINT*******************************/
+    //     /* missing checks for configuration format validity
+    //     /******************************************************************/ 
+    //     CFGM_sprinklerCfg = CfgFile["sprinkler"].to<JsonArray>();
+    //     CFGM_scheduleCfg  = CfgFile["scheduler"].to<JsonArray>();
+    // }
+    // else
+    // {
+    //     //no Cfgs available
+    // }
 }
 
 void LoadTestCfgs()
