@@ -3,9 +3,13 @@
 
 #include <RTClib.h>
 
-extern bool TimerCtrl_Init(void);
-extern void TimerCtrl_mainFunction();
-extern bool TimerCtrl_resetAlarm(uint8_t alarmIndex);
-extern DateTime TimerCtrl_getCurrentTime();
+#define TIMER1_INDEX        1
+#define TIMER2_INDEX        2
+
+bool TimerCtrl_Init(void);
+void TimerCtrl_mainFunction();
+bool TimerCtrl_resetAlarm(uint8_t alarmIndex);
+DateTime TimerCtrl_getCurrentTime();
+bool TimerCtrl_setAlarm(uint8_t alarmIndex, DateTime time);
 
 #endif /* _TIMERCTRL_HPP_ */
