@@ -3,135 +3,47 @@
 
 #include <stdint.h>
 #include <RTClib.h>
-// #include <vector.h>
 
 /*********************Cfg types definition*********************/
-// class sprinklerCfgNode {  
-// public: 
-//     uint8_t sprinklerID;
-//     uint8_t pin; 
-//     sprinklerCfgNode* next; 
-
-//     // Parameterized Constructor 
-//     sprinklerCfgNode(uint8_t ID, uint8_t pin) 
-//     {
-//         this->sprinklerID = ID; 
-//         this->pin = pin; 
-//         this->next = NULL; 
-//     } 
-// };
-
-// class scheduleCfgNode {  
-// public:
-//     DateTime scheduleTime;
-//     bool active_dayOfWeek[7];
-//     uint8_t sprinklerID;
-//     scheduleCfgNode* next;
-
-//     // Parameterized Constructor 
-//     scheduleCfgNode(DateTime scheduleTime, bool active_dayOfWeek[7], uint8_t sprinklerID) 
-//     { 
-//         this->scheduleTime = scheduleTime;
-//         for(uint8_t loopIndex = 0; loopIndex < 7; loopIndex++)
-//         {
-//             this->active_dayOfWeek[loopIndex] = active_dayOfWeek[loopIndex];
-//         }
-//         this->sprinklerID = sprinklerID;
-//         this->next = NULL; 
-//     } 
-// }; 
-  
-// // Linked list class to 
-// // implement a linked list. 
-// template <typename T>
-// class Linkedlist { 
-// private:
-//     T* head; 
-//     T* tail;
-  
-// public: 
-//     // Default constructor 
-//     Linkedlist()
-//     {
-//         head = NULL;
-//         tail = NULL;
-//     } 
-  
-//     // Function to insert a 
-//     // node at the end of the 
-//     // linked list. 
-//     void addNode(T* nodePtr)
-//     {
-//         T* tempPtr;
-
-//         if((this->head == NULL) && (this->tail == NULL))
-//         {
-//             this->head.nextPtr = nodePtr;
-//             this->tail.nextPtr = nodePtr;
-//         }
-//         else
-//         {
-//             this->tail.nextPtr = nodePtr;
-//             this->tail = nodePtr;
-//         }
-//     }
-  
-//     // Function to delete the 
-//     // node at given position 
-//     bool removeNode(T* nodePtr)
-//     {
-//         T* tempPtr;
-//         bool nodeFound = false;
-
-//         if((this->head == nodePtr) && (this->tail == nodePtr))
-//         {
-//             this->head = NULL;
-//             this->tail = NULL;
-//             nodeFound = true;
-//         }
-//         else if(this->head == nodePtr)
-//         {
-//             this->head = nodePtr.nextPtr;
-//             nodeFound = true;
-//         }
-//         else
-//         {
-//             for(tempPtr = this->head; tempPtr.nextPtr != NULL; tempPtr = tempPtr.nextPtr)
-//             {
-//                 if(tempPtr.nextPtr == nodePtr)
-//                 {
-//                     tempPtr.nextPtr = nodePtr.nextPtr;
-//                     nodeFound = true;
-//                 }
-//             }
-//         }
-
-//         if(nodeFound == true)
-//         {
-//             delete nodePtr;
-//         }
-
-//         return nodeFound;
-//     }
-// };
-
-typedef struct 
+typedef enum
 {
-    uint8_t hr;
-    uint8_t min;
-    uint8_t sec;
-    uint8_t minuteSpan;
-    uint8_t dayOfWeek[7];
-    uint8_t sprinklerCfgIndex;
-} CfgM_CalenderCFG;
+    GPIO_DRIVE = 0,
+    LATCH_SN7475N_DRIVE,
+    LATCH_SN7475N_DECODER
+} driveType_dt;
 
-typedef struct
+class HW_Driver_cfg
 {
-    uint8_t hwPin;
-}CfgM_SprinklerCFG;
+    public:
+    uint8_t GPIO_Drive_pinNum;
+    driveType_dt Solenoid_DriveType;
+    uint8_t GPIO_Enable_pinNum;
+    uint8_t pin_OutputLevel;
+    uint8_t coupled_HW_Driver_Idx;
+    HW_Driver_cfg(uint8_t GPIO_Drive_pinNum, \
+                  driveType_dt Solenoid_DriveType, \
+                  uint8_t GPIO_Enable_pinNum, \
+                  uint8_t coupled_HW_Driver_Idx);
+    bool set_HwState(uint8_t state);
+};
+
+class ScheduleAlarm_cfg
+{
+    private:
+    uint8_t hours;
+    uint8_t minutes;
+    uint8_t period;
+    uint8_t dow;
+    uint8_t isEnabled;
+    HW_Driver_cfg* HW_Driver_Data;
+    public:
+    ScheduleAlarm_cfg(uint8_t h, uint8_t m, uint8_t period, uint8_t dow, uint8_t isEnabled, HW_Driver_cfg* HW_Driver_Data);
+    ~ScheduleAlarm_cfg(void);
+    bool nextTriggerTime(uint32_t*);
+    bool taskCompleteTime(uint32_t*);
+    void evaluateAlarmState(void);
+};
 /*********************Global variables*********************/
-// extern Linkedlist<sprinklerCfgNode> CFGM_sprinklerCfg;
-// extern Linkedlist<scheduleCfgNode> CFGM_scheduleCfg;
-// extern std::vector<CfgM_CalenderCFG> CalenderCfg;
-
+extern HW_Driver_cfg HW_Driver_cfg_arr[3];
+extern ScheduleAlarm_cfg ScheduleAlarm_cfg_arr[6];
 #endif /* _CFGM_HPP_ */

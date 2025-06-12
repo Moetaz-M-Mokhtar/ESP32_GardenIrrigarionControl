@@ -12,5 +12,5 @@ void loop ()
 {
   TimerCtrl_mainFunction();
   Scheduler_MainFunction();
-  HwAbstr_GoToSleep();
+  HwAbstr_MainFunction();
 }

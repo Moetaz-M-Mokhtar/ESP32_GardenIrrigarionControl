@@ -15,7 +15,6 @@
 
 /*********************global function declaration*********************/
 void HwAbstr_Init(void);
-void HwAbstr_GoToSleep(void);
-void HWAbstr_updateGPIOPinState(gpio_num_t pinNumber, uint8_t state);
+void HwAbstr_MainFunction(void);
 
 #endif /* _HWABSTR_HPP_ */

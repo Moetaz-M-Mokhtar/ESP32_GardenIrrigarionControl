@@ -73,7 +73,15 @@ static ErrM_ErrorCfg ErrM_ErrorCfgList[ERRM_ERROR_COUNT] =
         ERRM_CRITICAL,       //errType
         ERRM_FUNC_SCHEDULER,  //functionInhibition
         "No configuration loaded"
-    }
+    },
+    {
+        //ERRM_DIRECT_GPIO_ALARM_ACTIVE
+        0x30,                 //errID
+        ERRM_INFO,            //errType
+        ERRM_FUNC_DEEP_SLEEP,      //functionInhibition
+        "GPIO drive active"
+    },
+
 };
 
 static bool ErrM_ErrorStatus[ERRM_ERROR_COUNT] = 
@@ -84,7 +92,8 @@ static bool ErrM_ErrorStatus[ERRM_ERROR_COUNT] =
     false,  //ERRM_SDCard_INIT
     false,  //ERRM_SDCard_FileFetchFailed
     false,  //ERRM_EEPROM_LOADING_FILE_FAILED
-    false   //ERRM_FAILED_TO_LOAD_CFG
+    false,  //ERRM_FAILED_TO_LOAD_CFG
+    false,  //ERRM_DIRECT_GPIO_ALARM_ACTIVE
 };
 
 static bool ErrM_FunctionPermission[ERRM_FUNC_COUNT] = 
@@ -92,7 +101,8 @@ static bool ErrM_FunctionPermission[ERRM_FUNC_COUNT] =
     false,  //ERRM_FUNC_NONE
     true,   //ERRM_FUNC_SCHEDULER
     true,   //ERRM_FUNC_TIMERCTRL
-    true    //ERRM_FUNC_SPCONN
+    true,   //ERRM_FUNC_SPCONN
+    true,   //ERRM_FUNC_DEEP_SLEEP
 };
 /******************************* local function declaration *****************************/
 
@@ -116,8 +126,9 @@ bool ErrM_SetErrorStatus(ErrM_Error_ID errorID, bool errorStatus)
             if(ErrM_ErrorCfgList[errorID].errType != ERRM_NO_LOG)
             {
                 //time stamp
-                Serial.print(TimerCtrl_getCurrentTime().toString("DDD, DD MMM YYYY hh:mm:ss ap"));
-                Serial.print(" ");
+                DateTime currentTime = TimerCtrl_getCurrentTime();
+                // Serial.printf("%d/%d/%d %d:%d:%d", currentTime.day(), currentTime.month(), currentTime.year(), currentTime.hour(), currentTime.minute(), currentTime.second());
+                // Serial.print(" ");
 
                 //prefix
                 if(ErrM_ErrorCfgList[errorID].errType == ERRM_INFO)
@@ -128,10 +139,9 @@ bool ErrM_SetErrorStatus(ErrM_Error_ID errorID, bool errorStatus)
                     Serial.print("ERROR: ");
 
                 //error message
-                Serial.printf("0x%x %s %s\n", 
-                                ErrM_ErrorCfgList[errorID].errID, 
-                                ErrM_ErrorCfgList[errorID].errorText,
-                                (errorStatus == true) ? "Active" : "Passive");
+                Serial.printf("0x%x -> ", ErrM_ErrorCfgList[errorID].errID); 
+                Serial.print(ErrM_ErrorCfgList[errorID].errorText);
+                Serial.println((errorStatus == true) ? "\tActive" : "\tPassive");
             }
             //update error status
             ErrM_ErrorStatus[errorID] = errorStatus;
