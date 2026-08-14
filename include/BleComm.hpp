@@ -1,0 +1,34 @@
+#ifndef _BLECOMM_HPP_
+#define _BLECOMM_HPP_
+
+#include <stdint.h>
+#include <stdbool.h>
+
+/* BLE UUIDs - must match Flutter app constants */
+#define BLE_SERVICE_UUID             "12345678-1234-5678-1234-56789ABCDEF0"
+#define BLE_TIMESYNC_CHAR_UUID       "ABCDEF00-1234-5678-1234-56789ABCDEF0"
+#define BLE_CONFIG_CHAR_UUID         "ABCDEF01-1234-5678-1234-56789ABCDEF0"
+#define BLE_STATUS_CHAR_UUID         "ABCDEF02-1234-5678-1234-56789ABCDEF0"
+#define BLE_MANUAL_CONTROL_CHAR_UUID "ABCDEF03-1234-5678-1234-56789ABCDEF0"
+#define BLE_HEARTBEAT_CHAR_UUID      "ABCDEF04-1234-5678-1234-56789ABCDEF0"
+#define BLE_DRIVER_CONFIG_CHAR_UUID  "ABCDEF05-1234-5678-1234-56789ABCDEF0"
+#define BLE_ALARMS_CHAR_UUID         "ABCDEF06-1234-5678-1234-56789ABCDEF0"
+#define BLE_FORCE_VALVE_CHAR_UUID    "ABCDEF07-1234-5678-1234-56789ABCDEF0"
+
+/* timeout in seconds (compared against unix epoch) */
+#define BLE_HEARTBEAT_TIMEOUT_SEC  30    /* 30 seconds */
+
+void BleComm_Init(void);
+void BleComm_mainFunction(void);
+bool BleComm_isConnected(void);
+bool BleComm_isPairingTimeout(void);
+void BleComm_disconnect(void);
+void BleComm_startAdvertising(void);
+void BleComm_stopAdvertising(void);
+bool BleComm_isDriverForced(uint8_t driverId);
+bool BleComm_hasActiveForces(void);
+void BleComm_setDriverTimer(uint8_t driverId, uint32_t startTime, uint32_t duration);
+void BleComm_clearDriverTimer(uint8_t driverId);
+void BleComm_checkTimerExpiry(void);
+
+#endif /* _BLECOMM_HPP_ */

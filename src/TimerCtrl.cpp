@@ -15,6 +15,23 @@ char daysOfTheWeek[7][12] = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursd
 /******************************* local function declaration *****************************/
 
 /****************************** local function definition *****************************/
+static void TimerCtrl_printDateTime(const DateTime& dt)
+{
+    Serial.print(dt.year(), DEC);
+    Serial.print('/');
+    Serial.print(dt.month(), DEC);
+    Serial.print('/');
+    Serial.print(dt.day(), DEC);
+    Serial.print(" (");
+    Serial.print(daysOfTheWeek[dt.dayOfTheWeek()]);
+    Serial.print(") ");
+    Serial.print(dt.hour(), DEC);
+    Serial.print(':');
+    Serial.print(dt.minute(), DEC);
+    Serial.print(':');
+    Serial.print(dt.second(), DEC);
+    Serial.println();
+}
 
 /****************************** global function declaration ****************************/
 bool TimerCtrl_Init(void)
@@ -37,20 +54,13 @@ bool TimerCtrl_Init(void)
         {
             if (DS3231Handler.lostPower())
             {
-                /* code */
                 ErrM_SetErrorStatus(ERRM_RTC_LOST_POWER, true);
             }
-            // When time needs to be set on a new device, or after a power loss, the
-            // following line sets the RTC to the date & time this sketch was compiled
             DS3231Handler.adjust(DS3231CurrentTime);
-            // This line sets the RTC with an explicit date & time, for example to set
-            // January 21, 2014 at 3am you would call:
-            // rtc.adjust(DateTime(2014, 1, 21, 3, 0, 0));
         }
         else
         {
             DS3231CurrentTime = DS3231Handler.now();
-            // DS3231Handler.adjust(DS3231CurrentTime);
         }
 
         prefs.putBool("clock_init", true);
@@ -76,28 +86,32 @@ bool TimerCtrl_Init(void)
     return OpStatus;
 }
 
-void TimerCtrl_mainFunction()
+static DateTime lastPrintTime = DateTime();
+
+void TimerCtrl_mainFunction(void)
 {
     if(ErrM_GetFunctionPermission(ERRM_FUNC_TIMERCTRL) == true)
     {
-        DS3231CurrentTime = DS3231Handler.now();
-        Serial.print(DS3231CurrentTime.year(), DEC);
-        Serial.print('/');
-        Serial.print(DS3231CurrentTime.month(), DEC);
-        Serial.print('/');
-        Serial.print(DS3231CurrentTime.day(), DEC);
-        Serial.print(" (");
-        Serial.print(daysOfTheWeek[DS3231CurrentTime.dayOfTheWeek()]);
-        Serial.print(") ");
-        Serial.print(DS3231CurrentTime.hour(), DEC);
-        Serial.print(':');
-        Serial.print(DS3231CurrentTime.minute(), DEC);
-        Serial.print(':');
-        Serial.print(DS3231CurrentTime.second(), DEC);
-        Serial.println();
-        Serial.print("Temperature: ");
-        Serial.print(DS3231Handler.getTemperature());
-        Serial.println(" C");
+        DateTime reading = DS3231Handler.now();
+
+        /* detect I2C failure — year 2000 means BCD registers read as 0x00 */
+        if (reading.year() < 2024)
+        {
+            ErrM_SetErrorStatus(ERRM_RTC_I2C_FAILED, true);
+            return;
+        }
+        ErrM_SetErrorStatus(ERRM_RTC_I2C_FAILED, false);
+
+        DS3231CurrentTime = reading;
+
+        if ((DS3231CurrentTime.unixtime() - lastPrintTime.unixtime()) >= 5)
+        {
+            TimerCtrl_printDateTime(DS3231CurrentTime);
+            Serial.print("Temperature: ");
+            Serial.print(DS3231Handler.getTemperature());
+            Serial.println(" C");
+            lastPrintTime = DS3231CurrentTime;
+        }
     }
 }
 
@@ -126,20 +140,10 @@ bool TimerCtrl_setAlarm(uint8_t alarmIndex, DateTime time)
         {
             OpStatus = false;
         }
-            Serial.print(time.year(), DEC);
-            Serial.print('/');
-            Serial.print(time.month(), DEC);
-            Serial.print('/');
-            Serial.print(time.day(), DEC);
-            Serial.print(" (");
-            Serial.print(daysOfTheWeek[time.dayOfTheWeek()]);
-            Serial.print(") ");
-            Serial.print(time.hour(), DEC);
-            Serial.print(':');
-            Serial.print(time.minute(), DEC);
-            Serial.print(':');
-            Serial.print(time.second(), DEC);
-            Serial.println();
+        if (OpStatus)
+        {
+            TimerCtrl_printDateTime(time);
+        }
     }
     else
     {
@@ -171,4 +175,47 @@ bool TimerCtrl_resetAlarm(uint8_t alarmIndex)
     }
     
     return OpStatus;
+}
+
+bool TimerCtrl_adjustTime(DateTime newTime)
+{
+    bool OpStatus = true;
+
+    if(ErrM_GetFunctionPermission(ERRM_FUNC_TIMERCTRL) == true)
+    {
+        DS3231Handler.adjust(newTime);
+
+        /* read back to verify I2C write succeeded */
+        DateTime verify = DS3231Handler.now();
+        if (verify.unixtime() != newTime.unixtime())
+        {
+            Serial.printf("TimerCtrl: I2C adjust verify failed (wrote %lu, read back %lu)\n",
+                           newTime.unixtime(), verify.unixtime());
+            ErrM_SetErrorStatus(ERRM_RTC_I2C_FAILED, true);
+            OpStatus = false;
+        }
+        else
+        {
+            ErrM_SetErrorStatus(ERRM_RTC_I2C_FAILED, false);
+            DS3231CurrentTime = newTime;
+        }
+
+        Serial.print("Time adjusted to: ");
+        TimerCtrl_printDateTime(newTime);
+    }
+    else
+    {
+        OpStatus = false;
+    }
+
+    return OpStatus;
+}
+
+float TimerCtrl_getTemperature(void)
+{
+    if (ErrM_GetFunctionPermission(ERRM_FUNC_TIMERCTRL))
+    {
+        return DS3231Handler.getTemperature();
+    }
+    return 0.0f;
 }

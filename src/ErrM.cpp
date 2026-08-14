@@ -1,8 +1,7 @@
 /* include files */
 #include <ErrM.hpp>
 #include <stdint.h>
-#include <TimerCtrl.hpp>
-#include <RTClib.h>
+#include <Arduino.h>
 /**************************************** define ***************************************/
 
 /********************************* local type definition *******************************/
@@ -34,54 +33,46 @@ static ErrM_ErrorCfg ErrM_ErrorCfgList[ERRM_ERROR_COUNT] =
     },
     {
         //ERRM_RTC_NOT_CONNECTED
-        0x10,                 //errID
+        0x01,                 //errID
         ERRM_CRITICAL,        //errType
-        ERRM_FUNC_TIMERCTRL,   //functionInhibition
+        ERRM_FUNC_TIMERCTRL,  //functionInhibition
         "RTC not found"       //errorText
     },
     {
         //ERRM_RTC_LOST_POWER
-        0x11,                //errID
+        0x02,                //errID
         ERRM_WARN,           //errType
         ERRM_FUNC_NONE,      //functionInhibition
         "RTC lost power"
     },
     {
-        //ERRM_SDCard_INIT
-        0x20,                //errID
-        ERRM_WARN,           //errType
-        ERRM_FUNC_NONE,      //functionInhibition
-        "SDCard Init failed"
-    },
-    {
-        //ERRM_SDCard_LOADING_FILE_FAILED
-        0x21,                //errID
-        ERRM_WARN,           //errType
-        ERRM_FUNC_NONE,      //functionInhibition
-        "SDCard Loading File Failed"
-    },
-    {
-        //ERRM_EEPROM_LOADING_FILE_FAILED
-        0x22,                //errID
-        ERRM_WARN,           //errType
-        ERRM_FUNC_NONE,      //functionInhibition
-        "EEPROM Loading File Failed"
-    },
-    {
-        //ERRM_FAILED_TO_LOAD_CFG
-        0x25,                //errID
-        ERRM_CRITICAL,       //errType
-        ERRM_FUNC_SCHEDULER,  //functionInhibition
-        "No configuration loaded"
-    },
-    {
         //ERRM_DIRECT_GPIO_ALARM_ACTIVE
-        0x30,                 //errID
+        0x03,                 //errID
         ERRM_INFO,            //errType
-        ERRM_FUNC_DEEP_SLEEP,      //functionInhibition
+        ERRM_FUNC_DEEP_SLEEP, //functionInhibition
         "GPIO drive active"
     },
-
+    {
+        //ERRM_NVS_LOAD_CORRUPTED
+        0x04,                //errID
+        ERRM_WARN,           //errType
+        ERRM_FUNC_NONE,      //functionInhibition
+        "Config corrupted"
+    },
+    {
+        //ERRM_RTC_I2C_FAILED
+        0x05,                 //errID
+        ERRM_CRITICAL,        //errType
+        ERRM_FUNC_TIMERCTRL,  //functionInhibition
+        "RTC I2C failed"
+    },
+    {
+        //ERRM_BLE_ADVERTISING_FAILED
+        0x06,                //errID
+        ERRM_WARN,           //errType
+        ERRM_FUNC_NONE,      //functionInhibition
+        "BLE advertising failed"
+    },
 };
 
 static bool ErrM_ErrorStatus[ERRM_ERROR_COUNT] = 
@@ -89,11 +80,10 @@ static bool ErrM_ErrorStatus[ERRM_ERROR_COUNT] =
     false,  //ERRM_NO_ERROR
     false,  //ERRM_RTC_NOT_CONNECTED
     false,  //ERRM_RTC_LOST_POWER
-    false,  //ERRM_SDCard_INIT
-    false,  //ERRM_SDCard_FileFetchFailed
-    false,  //ERRM_EEPROM_LOADING_FILE_FAILED
-    false,  //ERRM_FAILED_TO_LOAD_CFG
     false,  //ERRM_DIRECT_GPIO_ALARM_ACTIVE
+    false,  //ERRM_NVS_LOAD_CORRUPTED
+    false,  //ERRM_RTC_I2C_FAILED
+    false,  //ERRM_BLE_ADVERTISING_FAILED
 };
 
 static bool ErrM_FunctionPermission[ERRM_FUNC_COUNT] = 
@@ -114,6 +104,11 @@ bool ErrM_GetFunctionPermission(ErrM_Func_ID functionID)
     return (functionID < ERRM_FUNC_COUNT) ?  ErrM_FunctionPermission[functionID] : false;
 }
 
+bool ErrM_GetErrorStatus(ErrM_Error_ID errorID)
+{
+    return (errorID < ERRM_ERROR_COUNT) ? ErrM_ErrorStatus[errorID] : false;
+}
+
 bool ErrM_SetErrorStatus(ErrM_Error_ID errorID, bool errorStatus)
 {
     bool OpStatus = true;
@@ -125,11 +120,6 @@ bool ErrM_SetErrorStatus(ErrM_Error_ID errorID, bool errorStatus)
             //log new error status
             if(ErrM_ErrorCfgList[errorID].errType != ERRM_NO_LOG)
             {
-                //time stamp
-                DateTime currentTime = TimerCtrl_getCurrentTime();
-                // Serial.printf("%d/%d/%d %d:%d:%d", currentTime.day(), currentTime.month(), currentTime.year(), currentTime.hour(), currentTime.minute(), currentTime.second());
-                // Serial.print(" ");
-
                 //prefix
                 if(ErrM_ErrorCfgList[errorID].errType == ERRM_INFO)
                     Serial.print("INFO: ");
@@ -160,7 +150,7 @@ bool ErrM_SetErrorStatus(ErrM_Error_ID errorID, bool errorStatus)
 
 void ErrM_Init(void)
 {
-    
+    /* Error states and permissions are initialized by static arrays above */
 }
 
 void ErrM_mainFunction(void)
