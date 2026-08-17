@@ -51,6 +51,9 @@ bool HwAbstr_isRtcWake(void);
 void HwAbstr_GoToDeepSleep(void);
 int HwAbstr_GetBootCount(void);
 
+/* driver state — Scheduler sets requested state, HwAbstr applies to GPIO */
+void HwAbstr_setRequestedState(uint8_t driverId, uint8_t state);
+
 /* force management — owned by HwAbstr, called from BLE task and main loop */
 void HwAbstr_setForce(uint8_t driverId, uint8_t state, uint32_t duration);
 void HwAbstr_clearForce(uint8_t driverId);

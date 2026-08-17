@@ -3,6 +3,7 @@
 #include<TimerCtrl.hpp>
 #include<ClockDrift.hpp>
 #include<ErrM.hpp>
+#include<HwAbstr.hpp>
 #include<Common.hpp>
 
 /****************************** local variable declaration *****************************/
@@ -230,16 +231,14 @@ void ScheduleAlarm::evaluateAlarmState(void)
             continue;
         }
 
-        HW_Driver* driver = &HW_Driver_arr[i];
-
-        if (driver->forced)
+        if (HwAbstr_isDriverForced(i))
         {
             continue;  /* HwAbstr will override */
         }
 
         alarmTimerStart[i] = alarmStartTime.unixtime();
         alarmTimerDuration[i] = this->period * COMMON_SECONDS_PER_MINUTE;
-        driver->pin_OutputLevel = HIGH;
+        HwAbstr_setRequestedState(i, HIGH);
     }
 }
 
@@ -257,9 +256,9 @@ void Scheduler_MainFunction(void)
        another alarm for the same zone is still active (pass 2 re-enables). */
     for (uint8_t i = 0; i < HWABSTR_MAX_DRIVERS; i++)
     {
-        if (!HW_Driver_arr[i].forced)
+        if (!HwAbstr_isDriverForced(i))
         {
-            HW_Driver_arr[i].pin_OutputLevel = LOW;
+            HwAbstr_setRequestedState(i, LOW);
         }
     }
 

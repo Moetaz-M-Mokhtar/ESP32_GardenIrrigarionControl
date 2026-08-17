@@ -303,6 +303,14 @@ uint32_t HwAbstr_getForceTimerDuration(uint8_t driverId)
     if (driverId >= HWABSTR_MAX_DRIVERS) return 0;
     return forceTimerDuration[driverId];
 }
+
+void HwAbstr_setRequestedState(uint8_t driverId, uint8_t state)
+{
+    if (driverId >= HWABSTR_MAX_DRIVERS) return;
+    if (HW_Driver_arr[driverId].forced) return;
+
+    HW_Driver_arr[driverId].pin_OutputLevel = state;
+}
 /****************************** global function declaration ****************************/
 void HwAbstr_Init(void)
 {
