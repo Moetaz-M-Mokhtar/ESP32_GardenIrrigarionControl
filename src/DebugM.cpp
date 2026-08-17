@@ -55,10 +55,9 @@ void DebugM_mainFunction(void)
     Serial.printf("  Temp: %.1fC | Drift: %.2fppm | Sync: %lu\n",
                   TimerCtrl_getTemperature(), ClockDrift_getCoeff(),
                   ClockDrift_getLastSyncTime());
-    Serial.printf("  Boot: %d | BLE: %s | Pairing: %s\n",
+    Serial.printf("  Boot: %d | BLE: %s\n",
                   HwAbstr_GetBootCount(),
-                  BleComm_isConnected() ? "conn" : "disc",
-                  BleComm_isPairingMode() ? "active" : "idle");
+                  BleComm_isConnected() ? "conn" : "disc");
 
     /* RTC hardware alarms */
     for (uint8_t idx = TIMER1_INDEX; idx <= TIMER2_INDEX; idx++)

@@ -42,7 +42,7 @@ static volatile bool schedulesNeedRefresh = false;
 static char jsonBuffer[COMMON_JSON_BUFFER_SIZE];
 static char scheduleJsonBuffer[COMMON_JSON_BUFFER_SIZE];
 
-/* pairing mode state */
+/* pairing mode state — entered on non-RTC wake, 30s window for first BLE connect */
 static bool pairingMode = false;
 static uint32_t pairingStartTime = 0;
 
@@ -300,7 +300,6 @@ static void BleComm_updateStatus(void)
     doc["drift_ppm"] = drift;
     doc["last_sync"] = lastSync;
     doc["mode"] = "automatic";
-    doc["pairing"] = BleComm_isPairingMode();
 
     /* valve states — report EFFECTIVE state:
        forced state always wins, then scheduler-intended state */

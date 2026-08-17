@@ -328,8 +328,6 @@ void HwAbstr_Init(void)
         Serial.printf("\n------------------ rtc wake %d ------------------\n", bootCount++);
         Serial.println("HwAbstr: Woke from RTC alarm");
 
-        /* RTC wake: pin modes only — SN7475N latch holds state through sleep,
-           no digitalWrite or enable pulse (would de-latch the shift register) */
         GPIO_PinModeInit();
     }
     else
@@ -337,10 +335,6 @@ void HwAbstr_Init(void)
         wasRtcWake = false;
         Serial.printf("\n------------------ reset %d ------------------\n", bootCount++);
         Serial.println("HwAbstr: Normal power-on/reset");
-
-        /* Check pairing button (active LOW) — signals pairing mode request */
-        pinMode(HWABSTR_PAIRING_BUTTON_PIN, INPUT_PULLUP);
-        delay(50); /* debounce */
 
         /* Normal reset: full GPIO init — establish known state from scratch */
         GPIO_FullInit();
@@ -366,9 +360,4 @@ void HwAbstr_MainFunction(void)
 int HwAbstr_GetBootCount(void)
 {
     return bootCount;
-}
-
-bool HwAbstr_isPairingButtonHeld(void)
-{
-    return (digitalRead(HWABSTR_PAIRING_BUTTON_PIN) == LOW);
 }

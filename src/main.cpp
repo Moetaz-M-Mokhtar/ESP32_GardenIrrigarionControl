@@ -13,18 +13,17 @@ static bool shouldSleep(void)
     if (HwAbstr_isRtcWake()) return true;
     if (BleComm_isConnected()) return false;
     if (!BleComm_isPairingTimeout()) return false;
+    if (HwAbstr_hasActiveForces()) return false;
+    if (ErrM_GetErrorStatus(ERRM_DIRECT_GPIO_ALARM_ACTIVE)) return false;
+    if (!ErrM_GetFunctionPermission(ERRM_FUNC_DEEP_SLEEP)) return false;
     return true;
 }
 
 static void goToSleep(void)
 {
-    if (!ErrM_GetFunctionPermission(ERRM_FUNC_DEEP_SLEEP)) return;
-    if (HwAbstr_hasActiveForces()) return;
-
     Scheduler_MainFunction();
     uint32_t sleepSec = Scheduler_GetSecondsUntilNextAlarm();
     if (sleepSec == 0) sleepSec = SCHEDULER_FALLBACK_SLEEP_SEC;
-    Serial.printf("Main: goToSleep, next alarm in %lu seconds\n", sleepSec);
 
     BleComm_stopAdvertising();
     HwAbstr_GoToDeepSleep(sleepSec);
@@ -44,13 +43,6 @@ void setup()
     if (!HwAbstr_isRtcWake())
     {
         BleComm_Init();
-
-        /* Check if pairing button was held during boot — enter pairing mode */
-        if (HwAbstr_isPairingButtonHeld())
-        {
-            BleComm_enterPairingMode();
-            Serial.println("Main: Pairing button held - entered pairing mode");
-        }
     }
 }
 

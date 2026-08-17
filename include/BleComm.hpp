@@ -21,11 +21,11 @@
 void BleComm_Init(void);
 void BleComm_mainFunction(void);
 bool BleComm_isConnected(void);
-bool BleComm_isPairingTimeout(void);
 void BleComm_disconnect(void);
 void BleComm_startAdvertising(void);
 void BleComm_stopAdvertising(void);
 bool BleComm_isPairingMode(void);
 void BleComm_enterPairingMode(void);
+bool BleComm_isPairingTimeout(void);
 
 #endif /* _BLECOMM_HPP_ */
