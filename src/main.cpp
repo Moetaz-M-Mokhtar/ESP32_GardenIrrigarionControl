@@ -21,7 +21,7 @@ static bool shouldSleep(void)
 
 static void goToSleep(void)
 {
-    Scheduler_MainFunction();
+    Serial.println("Main: going to sleep");
     BleComm_stopAdvertising();
     HwAbstr_GoToDeepSleep();
 }
