@@ -16,8 +16,7 @@
 enum BleComm_State
 {
     BLE_STATE_IDLE = 0,
-    BLE_STATE_CONNECTED,
-    BLE_STATE_MANUAL
+    BLE_STATE_CONNECTED
 };
 
 /****************************** local variable declaration *****************************/
@@ -26,7 +25,6 @@ static NimBLEService* pService = nullptr;
 static NimBLECharacteristic* pTimeSyncChar = nullptr;
 static NimBLECharacteristic* pConfigChar = nullptr;
 static NimBLECharacteristic* pStatusChar = nullptr;
-static NimBLECharacteristic* pManualCtrlChar = nullptr;
 static NimBLECharacteristic* pHeartbeatChar = nullptr;
 static NimBLECharacteristic* pDriverConfigChar = nullptr;
 static NimBLECharacteristic* pAlarmsChar = nullptr;
@@ -34,10 +32,6 @@ static NimBLECharacteristic* pForceValveChar = nullptr;
 
 static std::atomic<BleComm_State> bleState{BLE_STATE_IDLE};
 static std::atomic<uint32_t> lastHeartbeatTime{0};
-static std::atomic<bool> manualMode{false};
-
-/* manual valve states - 4 valves (NimBLE task writes, main loop reads) */
-static volatile uint8_t manualValveStates[CFGM_MAX_DRIVERS] = {0, 0, 0, 0};
 
 /* force valve states - for home screen override (NimBLE task writes, main loop reads) */
 static volatile bool forceActive[CFGM_MAX_DRIVERS] = {false, false, false, false};
@@ -65,15 +59,11 @@ static bool pairingMode = false;
 static uint32_t pairingStartTime = 0;
 
 /******************************* local function declaration *****************************/
-static void BleComm_debugDump(void);
 static void BleComm_updateStatus(void);
 static void BleComm_handleTimeSyncWrite(const uint8_t* data, size_t len);
 static void BleComm_handleConfigWrite(const uint8_t* data, size_t len);
-static void BleComm_handleManualControlWrite(const uint8_t* data, size_t len);
 static void BleComm_handleForceValveWrite(const uint8_t* data, size_t len);
 static void BleComm_handleDriverConfigWrite(const uint8_t* data, size_t len);
-static void BleComm_enterManualMode(void);
-static void BleComm_exitManualMode(void);
 static void BleComm_updateAlarmsInternal(void);
 static void BleComm_disconnectClient(void);
 
@@ -87,19 +77,12 @@ class BleCommServerCallbacks : public NimBLEServerCallbacks
         lastHeartbeatTime = ClockDrift_getCorrectedTime().unixtime();
         bleState = BLE_STATE_CONNECTED;
         Serial.println("BLE: Client connected");
-        CfgM_SetPaired();
     }
 
     void onDisconnect(NimBLEServer* pServer) override
     {
         bleState = BLE_STATE_IDLE;
         Serial.println("BLE: Client disconnected");
-
-        /* clean up manual mode only */
-        if (manualMode)
-        {
-            BleComm_exitManualMode();
-        }
     }
 };
 
@@ -126,17 +109,6 @@ class BleCommConfigCallback : public NimBLECharacteristicCallbacks
     }
 };
 
-class BleCommManualCtrlCallback : public NimBLECharacteristicCallbacks
-{
-    void onWrite(NimBLECharacteristic* pCharacteristic) override
-    {
-        auto value = pCharacteristic->getValue();
-        BleComm_handleManualControlWrite(
-            reinterpret_cast<const uint8_t*>(value.data()),
-            value.length());
-    }
-};
-
 class BleCommHeartbeatCallback : public NimBLECharacteristicCallbacks
 {
     void onWrite(NimBLECharacteristic* pCharacteristic) override
@@ -154,11 +126,6 @@ class BleCommHeartbeatCallback : public NimBLECharacteristicCallbacks
                 if (strcmp(action, "disconnect") == 0)
                 {
                     Serial.println("BLE: Client requested disconnect");
-                    /* clean up manual mode only — forces persist in RAM */
-                    if (manualMode)
-                    {
-                        BleComm_exitManualMode();
-                    }
                     BleComm_disconnectClient();
                 }
             }
@@ -192,7 +159,6 @@ class BleCommForceValveCallback : public NimBLECharacteristicCallbacks
 static BleCommServerCallbacks serverCallbacks;
 static BleCommTimeSyncCallback timeSyncCallbacks;
 static BleCommConfigCallback configCallbacks;
-static BleCommManualCtrlCallback manualCtrlCallbacks;
 static BleCommHeartbeatCallback heartbeatCallbacks;
 static BleCommDriverConfigCallback driverConfigCallbacks;
 static BleCommForceValveCallback forceValveCallbacks;
@@ -252,13 +218,6 @@ void BleComm_Init(void)
         NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::NOTIFY
     );
 
-    /* Manual Control Characteristic (Read/Write) */
-    pManualCtrlChar = pService->createCharacteristic(
-        BLE_MANUAL_CONTROL_CHAR_UUID,
-        NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::WRITE
-    );
-    pManualCtrlChar->setCallbacks(&manualCtrlCallbacks);
-
     /* Heartbeat Characteristic (Write only) */
     pHeartbeatChar = pService->createCharacteristic(
         BLE_HEARTBEAT_CHAR_UUID,
@@ -311,7 +270,7 @@ void BleComm_mainFunction(void)
         return;
     }
 
-    if (bleState == BLE_STATE_CONNECTED || bleState == BLE_STATE_MANUAL)
+    if (bleState == BLE_STATE_CONNECTED)
     {
         /* check heartbeat timeout */
         uint32_t now = ClockDrift_getCorrectedTime().unixtime();
@@ -375,80 +334,8 @@ void BleComm_disconnect(void)
 
 /****************************** local function definition ****************************/
 
-static void BleComm_enterManualMode(void)
-{
-    if (!manualMode)
-    {
-        manualMode = true;
-
-        /* inhibit deep sleep while in manual mode */
-        ErrM_SetErrorStatus(ERRM_DIRECT_GPIO_ALARM_ACTIVE, true);
-
-        Serial.println("BLE: Entered manual mode");
-    }
-}
-
-static void BleComm_exitManualMode(void)
-{
-    if (manualMode)
-    {
-        manualMode = false;
-
-        /* clear all manual valve states */
-        for (uint8_t i = 0; i < CFGM_MAX_DRIVERS; i++)
-        {
-            manualValveStates[i] = 0;
-        }
-
-        /* clear the error status to allow deep sleep again */
-        ErrM_SetErrorStatus(ERRM_DIRECT_GPIO_ALARM_ACTIVE, false);
-
-        Serial.println("BLE: Exited manual mode, resuming automatic control");
-    }
-}
-
-static void BleComm_debugDump(void)
-{
-    DateTime corrected = ClockDrift_getCorrectedTime();
-    DateTime raw = TimerCtrl_getCurrentTime();
-
-    Serial.printf("\n=== DEBUG DUMP ===\n");
-    Serial.printf("  corrected=%04d-%02d-%02d %02d:%02d:%02d (dow=%d) raw=%lu\n",
-                  corrected.year(), corrected.month(), corrected.day(),
-                  corrected.hour(), corrected.minute(), corrected.second(),
-                  corrected.dayOfTheWeek(), raw.unixtime());
-
-    for (uint8_t i = 0; i < CFGM_MAX_ALARMS; i++)
-    {
-        ScheduleAlarm* a = &ScheduleAlarm_arr[i];
-        if (a->getDow() == 0) continue;
-
-        DateTime alarmStart = DateTime(corrected.year(), corrected.month(), corrected.day(),
-                                       a->getHours(), a->getMinutes());
-        DateTime alarmEnd = alarmStart + TimeSpan(a->getPeriod() * 60);
-        bool dowActive = (a->getDow() >> (7 - corrected.dayOfTheWeek())) & 0x01;
-        bool inWindow = dowActive && (corrected >= alarmStart) && (corrected < alarmEnd);
-
-        Serial.printf("  alarm[%d] %02d:%02d period=%d dow=0x%02X zones=0x%02X | dowActive=%d inWindow=%d (%02d:%02d - %02d:%02d)\n",
-                      i, a->getHours(), a->getMinutes(), a->getPeriod(), a->getDow(), a->getZones(),
-                      dowActive, inWindow,
-                      alarmStart.hour(), alarmStart.minute(), alarmEnd.hour(), alarmEnd.minute());
-    }
-
-    for (uint8_t i = 0; i < CFGM_MAX_DRIVERS; i++)
-    {
-        HW_Driver* drv = &HW_Driver_arr[i];
-        Serial.printf("  drv[%d] enabled=%d pinLevel=%d forced=%d forceState=%d manual=%d forceActive=%d scheduledOn=%d\n",
-                      i, CfgM_IsDriverEnabled(i), drv->pin_OutputLevel,
-                      drv->forced, drv->forcedState, manualValveStates[i],
-                      forceActive[i], Scheduler_IsDriverScheduledOn(i));
-    }
-    Serial.println("=== END DEBUG DUMP ===\n");
-}
-
 static void BleComm_updateStatus(void)
 {
-    BleComm_debugDump();
     if (pStatusChar == nullptr)
     {
         return;
@@ -480,14 +367,12 @@ static void BleComm_updateStatus(void)
     doc["boot"] = HwAbstr_GetBootCount();
     doc["drift_ppm"] = drift;
     doc["last_sync"] = lastSync;
-    doc["mode"] = manualMode ? "manual" : "automatic";
+    doc["mode"] = "automatic";
     doc["pairing"] = BleComm_isPairingMode();
 
     /* valve states - 4 valves. Report EFFECTIVE state:
-       forced state always wins, then manual override, then scheduler-intended
-       state (an alarm is currently within its active window). Previously
-       only manualValveStates was reported, so scheduled zones never showed
-       as active in the app, and force OFF was ignored. */
+       forced state always wins, then scheduler-intended
+       state (an alarm is currently within its active window). */
     JsonArray valves = doc["valves"].to<JsonArray>();
     for (uint8_t i = 0; i < CFGM_MAX_DRIVERS; i++)
     {
@@ -498,8 +383,7 @@ static void BleComm_updateStatus(void)
         }
         else
         {
-            bool scheduledOn = !manualMode && Scheduler_IsDriverScheduledOn(i);
-            effectiveOn = (manualValveStates[i] == 1) || scheduledOn;
+            effectiveOn = Scheduler_IsDriverScheduledOn(i);
         }
         valves.add(effectiveOn ? 1 : 0);
     }
@@ -638,15 +522,6 @@ static void BleComm_handleConfigWrite(const uint8_t* data, size_t len)
         return;
     }
 
-    /* handle pair_next_wake command */
-    if (doc["pair_next_wake"].is<bool>())
-    {
-        bool enable = doc["pair_next_wake"].as<bool>();
-        CfgM_SetPairOnNextWake(enable);
-        Serial.printf("BLE Config: pair_next_wake -> %d\n", enable);
-        return;
-    }
-
     /* handle read_alarms request — flag for main loop to serialize */
     if (doc["action"].is<const char*>() &&
         strcmp(doc["action"].as<const char*>(), "read_alarms") == 0)
@@ -697,53 +572,6 @@ static void BleComm_handleConfigWrite(const uint8_t* data, size_t len)
     }
 }
 
-static void BleComm_handleManualControlWrite(const uint8_t* data, size_t len)
-{
-    JsonDocument doc;
-    DeserializationError error = deserializeJson(doc, data, len);
-
-    if (error)
-    {
-        Serial.printf("BLE ManualCtrl: JSON parse error: %s\n", error.c_str());
-        return;
-    }
-
-    if (!doc["valve"].is<uint8_t>() || !doc["state"].is<uint8_t>())
-    {
-        Serial.println("BLE ManualCtrl: missing 'valve' or 'state' field");
-        return;
-    }
-
-    uint8_t valve = doc["valve"].as<uint8_t>();
-    uint8_t state = doc["state"].as<uint8_t>();
-
-    if (valve >= CFGM_MAX_DRIVERS)
-    {
-        Serial.printf("BLE ManualCtrl: invalid valve index %d\n", valve);
-        return;
-    }
-
-    /* check if driver is enabled */
-    if (!CfgM_IsDriverEnabled(valve))
-    {
-        Serial.printf("BLE ManualCtrl: driver %d is disabled\n", valve);
-        return;
-    }
-
-    /* enter manual mode on first control command */
-    if (!manualMode)
-    {
-        BleComm_enterManualMode();
-        bleState = BLE_STATE_MANUAL;
-    }
-
-    manualValveStates[valve] = state;
-
-    HW_Driver_arr[valve].set_HwState(state ? HIGH : LOW);
-
-    Serial.printf("BLE ManualCtrl: valve %d -> %s\n", valve, state ? "ON" : "OFF");
-}
-
 static void BleComm_handleDriverConfigWrite(const uint8_t* data, size_t len)
 {
     JsonDocument doc;
@@ -773,11 +601,6 @@ static void BleComm_handleDriverConfigWrite(const uint8_t* data, size_t len)
     /* if disabling, turn off the valve and clear force state */
     if (!enabled)
     {
-        if (manualMode && manualValveStates[driverId] == 1)
-        {
-            manualValveStates[driverId] = 0;
-        }
-
         /* clear force state so device can sleep */
         if (forceActive[driverId])
         {
@@ -829,7 +652,6 @@ static void BleComm_handleForceValveWrite(const uint8_t* data, size_t len)
 
     forceActive[valve] = force;
     forceState[valve] = state;
-    manualValveStates[valve] = force ? state : 0;
 
     /* apply to hardware immediately */
     if (force)
@@ -931,92 +753,9 @@ void BleComm_clearDriverTimer(uint8_t driverId)
     }
 }
 
-void print_AllDriverDebug(
-    HW_Driver *drivers,
-    uint8_t count)
-{
-    uint32_t now = ClockDrift_getCorrectedTime().unixtime();
-
-    Serial.println();
-    Serial.println("==============================================================================================================================");
-    Serial.println("                                           HW DRIVER DEBUG");
-    Serial.println("==============================================================================================================================");
-
-    Serial.println(
-        "Idx | Drive | Type | Enable | Out | Coupled | Force | F.State | Timer Start | Duration | Elapsed | Remaining"
-    );
-
-    Serial.println(
-        "------------------------------------------------------------------------------------------------------------------------------"
-    );
-
-    for (uint8_t i = 0; i < count; i++)
-    {
-        uint32_t elapsed = 0;
-        uint32_t remaining = 0;
-
-        // Timer calculation
-        if (zoneTimerDuration[i] > 0)
-        {
-            elapsed = now - zoneTimerStart[i];
-
-            if (elapsed < zoneTimerDuration[i])
-                remaining = zoneTimerDuration[i] - elapsed;
-            else
-                remaining = 0;
-        }
-
-        Serial.printf(
-            "%3u | "
-            "%5d | "
-            "%4d | "
-            "%6d | "
-            "%3u | "
-            "%7u | "
-            "%5s | "
-            "%7u | "
-            "%11lu | "
-            "%8.1fs | "
-            "%7.1fs | "
-            "%9.1fs\n",
-
-            // HW_Driver
-            i,
-            drivers[i].GPIO_Drive_pinNum,
-            drivers[i].Solenoid_DriveType,
-            drivers[i].GPIO_Enable_pinNum,
-            drivers[i].pin_OutputLevel,
-            drivers[i].coupled_HW_Driver_Idx,
-
-            // Force state
-            forceActive[i] ? "YES" : "NO",
-            forceState[i],
-
-            // Timer
-            (unsigned long)zoneTimerStart[i],
-            zoneTimerDuration[i],
-            elapsed,
-            remaining
-        );
-    }
-
-    Serial.println(
-        "=============================================================================================================================="
-    );
-}
-
 void BleComm_checkTimerExpiry(void)
 {
     uint32_t now = ClockDrift_getCorrectedTime().unixtime();
-    static uint32_t lastprintTime = 0;
-
-    if (now - lastprintTime >= 5)
-    {
-        /* code */
-        print_AllDriverDebug(HW_Driver_arr,4);
-        lastprintTime = now;
-    }
-    
 
     for (uint8_t i = 0; i < CFGM_MAX_DRIVERS; i++)
     {
@@ -1033,7 +772,6 @@ void BleComm_checkTimerExpiry(void)
             Serial.printf("BLE: Timer expired for valve %d, turning off\n", i);
             forceActive[i] = false;
             forceState[i] = 0;
-            manualValveStates[i] = 0;
             HW_Driver_arr[i].forced = false;
             HW_Driver_arr[i].forcedState = 0;
             BleComm_clearDriverTimer(i);

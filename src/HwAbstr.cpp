@@ -232,14 +232,13 @@ void HwAbstr_Init(void)
 
         /* Pairing mode entry is handled by BleComm_Init() after clock sync */
 
-        /* Check pairing button (active LOW) - if held, also clear paired state */
+        /* Check pairing button (active LOW) — forces pairing mode */
         pinMode(HWABSTR_PAIRING_BUTTON_PIN, INPUT_PULLUP);
         delay(50); /* debounce */
         if (digitalRead(HWABSTR_PAIRING_BUTTON_PIN) == LOW)
         {
-            CfgM_ClearPaired();
             BleComm_enterPairingMode();
-            Serial.println("HwAbstr: Pairing button held - cleared paired state");
+            Serial.println("HwAbstr: Pairing button held - entered pairing mode");
         }
 
         /* Normal reset: full GPIO init — establish known state from scratch */

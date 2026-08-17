@@ -11,14 +11,12 @@
 #define NVS_KEY_ALARM_MINUTES     "alarm_m"
 #define NVS_KEY_ALARM_PERIOD      "alarm_p"
 #define NVS_KEY_ALARM_DOW         "alarm_d"
-#define NVS_KEY_PAIR_ON_NEXT_WAKE "pair_nw"
 
 /********************************* local type definition *******************************/
 
 /****************************** local variable definition *****************************/
 static volatile bool driverEnabled[CFGM_MAX_DRIVERS] = {true, true, true, true};
 static Preferences nvsPrefs;
-static volatile bool nvsDirty = false;
 
 /****************************** local function declaration *****************************/
 
@@ -223,8 +221,7 @@ bool CfgM_SetAlarm(uint8_t alarmId, uint8_t h, uint8_t m, uint16_t period, uint8
     ScheduleAlarm_arr[alarmId].setDow(dow);
     ScheduleAlarm_arr[alarmId].setZones(zones);
 
-    /* defer NVS save to main loop — avoids blocking NimBLE task with flash writes */
-    nvsDirty = true;
+    CfgM_SaveToNvs();
 
     Serial.printf("CfgM: Alarm %d set to %02d:%02d, period=%d, dow=0x%02X, zones=0x%02X\n",
                    alarmId, h, m, period, dow, zones);
@@ -242,8 +239,7 @@ bool CfgM_SetAlarmDriver(uint8_t alarmId, uint8_t driverId)
 
     ScheduleAlarm_arr[alarmId].setHwDriver(&HW_Driver_arr[driverId]);
 
-    /* defer NVS save to main loop */
-    nvsDirty = true;
+    CfgM_SaveToNvs();
 
     Serial.printf("CfgM: Alarm %d assigned to driver %d\n", alarmId, driverId);
     return true;
@@ -268,36 +264,8 @@ bool CfgM_SetDriverEnabled(uint8_t driverId, bool enabled)
 
     driverEnabled[driverId] = enabled;
     
-    /* defer NVS save to main loop */
-    nvsDirty = true;
+    CfgM_SaveToNvs();
     
     Serial.printf("CfgM: Driver %d %s\n", driverId, enabled ? "enabled" : "disabled");
     return true;
-}
-
-void CfgM_SetPairOnNextWake(bool enable)
-{
-    nvsPrefs.putBool(NVS_KEY_PAIR_ON_NEXT_WAKE, enable);
-    Serial.printf("CfgM: Pair on next wake %s\n", enable ? "enabled" : "disabled");
-}
-
-void CfgM_SetPaired(void)
-{
-    nvsPrefs.putBool("paired", true);
-    Serial.println("CfgM: Device marked as paired");
-}
-
-void CfgM_ClearPaired(void)
-{
-    nvsPrefs.putBool("paired", false);
-    Serial.println("CfgM: Pairing cleared");
-}
-
-void CfgM_MainFunction(void)
-{
-    if (nvsDirty)
-    {
-        nvsDirty = false;
-        CfgM_SaveToNvs();
-    }
 }

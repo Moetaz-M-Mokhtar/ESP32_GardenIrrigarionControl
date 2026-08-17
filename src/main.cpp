@@ -24,9 +24,6 @@ static void goToSleep(void)
         return;
     }
 
-    /* flush any pending NVS writes before deep sleep */
-    CfgM_MainFunction();
-
     Scheduler_MainFunction();
 
     uint32_t sleepSec = Scheduler_GetSecondsUntilNextAlarm();
@@ -76,13 +73,11 @@ void loop()
         {
             Serial.println("Main: BLE connected path");
             /* BLE connected — handle communication, stay awake.
-               Run scheduler so scheduled zones get power even while connected.
-               Scheduler respects manual/forced states (skips them in Pass 1). */
+               Run scheduler so scheduled zones get power even while connected. */
             BleComm_mainFunction();
             BleComm_checkTimerExpiry();
             Scheduler_MainFunction();
             HwAbstr_MainFunction();
-            CfgM_MainFunction();
             delay(100);
         }
         else if (BleComm_isPairingTimeout())
@@ -92,7 +87,6 @@ void loop()
             BleComm_checkTimerExpiry();
             Scheduler_MainFunction();
             HwAbstr_MainFunction();
-            CfgM_MainFunction();
             goToSleep();
             delay(1000);
         }
@@ -106,7 +100,6 @@ void loop()
             Scheduler_MainFunction();
             HwAbstr_MainFunction();
             BleComm_checkTimerExpiry();
-            CfgM_MainFunction();
             delay(1000);
         }
     }

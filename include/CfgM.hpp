@@ -75,9 +75,5 @@ void CfgM_SaveToNvs(void);
 void CfgM_LoadFromNvs(void);
 bool CfgM_IsDriverEnabled(uint8_t driverId);
 bool CfgM_SetDriverEnabled(uint8_t driverId, bool enabled);
-void CfgM_SetPairOnNextWake(bool enable);
-void CfgM_SetPaired(void);
-void CfgM_ClearPaired(void);
-void CfgM_MainFunction(void);
 
 #endif /* _CFGM_HPP_ */
