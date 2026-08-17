@@ -340,7 +340,7 @@ bool Scheduler_IsDriverScheduledOn(uint8_t driverId)
                                        currentTime.day(),
                                        alarm->getHours(),
                                        alarm->getMinutes());
-        DateTime alarmEnd = alarmStart + TimeSpan(alarm->getPeriod() * 60);
+        DateTime alarmEnd = alarmStart + TimeSpan(alarm->getPeriod() * COMMON_SECONDS_PER_MINUTE);
 
         if ((currentTime >= alarmStart) && (currentTime < alarmEnd))
         {

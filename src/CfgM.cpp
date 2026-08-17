@@ -7,17 +7,18 @@
 #define NVS_NAMESPACE "cfgm"
 #define NVS_KEY_ALARM_INITIALIZED "alarm_init"
 
+/****************************** local variable declaration *****************************/
+static Preferences nvsPrefs;
+
 /****************************** global function definition ****************************/
 void CfgM_Init(void)
 {
-    static Preferences nvsPrefs;
     nvsPrefs.begin(NVS_NAMESPACE, false);
     CfgM_LoadFromNvs();
 }
 
 void CfgM_SaveToNvs(void)
 {
-    static Preferences nvsPrefs;
     nvsPrefs.putBool(NVS_KEY_ALARM_INITIALIZED, true);
 
     for (uint8_t i = 0; i < SCHEDULER_MAX_ALARMS; i++)
@@ -42,8 +43,6 @@ void CfgM_SaveToNvs(void)
 
 void CfgM_LoadFromNvs(void)
 {
-    static Preferences nvsPrefs;
-
     /* Load alarm configuration */
     if (!nvsPrefs.getBool(NVS_KEY_ALARM_INITIALIZED, false))
     {

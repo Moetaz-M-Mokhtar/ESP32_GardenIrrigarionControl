@@ -58,6 +58,7 @@ void HwAbstr_setRequestedState(uint8_t driverId, uint8_t state);
 void HwAbstr_setForce(uint8_t driverId, uint8_t state, uint32_t duration);
 void HwAbstr_clearForce(uint8_t driverId);
 bool HwAbstr_isDriverForced(uint8_t driverId);
+uint8_t HwAbstr_getForceState(uint8_t driverId);
 bool HwAbstr_hasActiveForces(void);
 
 /* timer getters — read by BleComm for JSON status serialization */

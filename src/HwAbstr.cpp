@@ -237,7 +237,7 @@ static void HWAbstr_updateGPIOPinStates(void)
 
 static void HwAbstr_checkForceExpiry(void)
 {
-    uint32_t now = ClockDrift_getCorrectedTime().unixtime();
+    uint32_t now = millis();
 
     for (uint8_t i = 0; i < HWABSTR_MAX_DRIVERS; i++)
     {
@@ -250,6 +250,7 @@ static void HwAbstr_checkForceExpiry(void)
             Serial.printf("HwAbstr: Force expired for driver %d\n", i);
             HW_Driver_arr[i].forced = false;
             HW_Driver_arr[i].forcedState = 0;
+            HW_Driver_arr[i].pin_OutputLevel = LOW;
             forceTimerStart[i] = 0;
             forceTimerDuration[i] = 0;
         }
@@ -260,10 +261,11 @@ static void HwAbstr_checkForceExpiry(void)
 void HwAbstr_setForce(uint8_t driverId, uint8_t state, uint32_t duration)
 {
     if (driverId >= HWABSTR_MAX_DRIVERS) return;
+    if (state != LOW && state != HIGH) return;
 
     HW_Driver_arr[driverId].forced = true;
     HW_Driver_arr[driverId].forcedState = state;
-    forceTimerStart[driverId] = ClockDrift_getCorrectedTime().unixtime();
+    forceTimerStart[driverId] = millis();
     forceTimerDuration[driverId] = duration;
 }
 
@@ -281,6 +283,12 @@ bool HwAbstr_isDriverForced(uint8_t driverId)
 {
     if (driverId >= HWABSTR_MAX_DRIVERS) return false;
     return HW_Driver_arr[driverId].forced;
+}
+
+uint8_t HwAbstr_getForceState(uint8_t driverId)
+{
+    if (driverId >= HWABSTR_MAX_DRIVERS) return 0;
+    return HW_Driver_arr[driverId].forcedState;
 }
 
 bool HwAbstr_hasActiveForces(void)

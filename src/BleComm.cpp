@@ -61,7 +61,7 @@ class BleCommServerCallbacks : public NimBLEServerCallbacks
 {
     void onConnect(NimBLEServer* pServer) override
     {
-        lastHeartbeatTime = ClockDrift_getCorrectedTime().unixtime();
+        lastHeartbeatTime = millis();
         bleState = BLE_STATE_CONNECTED;
     }
 
@@ -98,7 +98,7 @@ class BleCommHeartbeatCallback : public NimBLECharacteristicCallbacks
 {
     void onWrite(NimBLECharacteristic* pCharacteristic) override
     {
-        lastHeartbeatTime = ClockDrift_getCorrectedTime().unixtime();
+        lastHeartbeatTime = millis();
 
         auto value = pCharacteristic->getValue();
         if (value.length() > 0)
@@ -233,8 +233,8 @@ void BleComm_mainFunction(void)
     if (bleState == BLE_STATE_CONNECTED)
     {
         /* check heartbeat timeout */
-        uint32_t now = ClockDrift_getCorrectedTime().unixtime();
-        if ((now - lastHeartbeatTime) > BLE_HEARTBEAT_TIMEOUT_SEC)
+        uint32_t now = millis();
+        if ((now - lastHeartbeatTime) > (BLE_HEARTBEAT_TIMEOUT_SEC * 1000))
         {
             BleComm_disconnect();
             return;
@@ -307,9 +307,9 @@ static void BleComm_updateStatus(void)
     for (uint8_t i = 0; i < HWABSTR_MAX_DRIVERS; i++)
     {
         bool effectiveOn;
-        if (HW_Driver_arr[i].forced)
+        if (HwAbstr_isDriverForced(i))
         {
-            effectiveOn = (HW_Driver_arr[i].forcedState == 1);
+            effectiveOn = (HwAbstr_getForceState(i) == 1);
         }
         else
         {
@@ -322,7 +322,7 @@ static void BleComm_updateStatus(void)
     JsonArray forced = doc["forced"].to<JsonArray>();
     for (uint8_t i = 0; i < HWABSTR_MAX_DRIVERS; i++)
     {
-        forced.add(HW_Driver_arr[i].forced ? 1 : 0);
+        forced.add(HwAbstr_isDriverForced(i) ? 1 : 0);
     }
 
     /* timer arrays — for countdown display */
@@ -450,6 +450,14 @@ static void BleComm_handleConfigWrite(const uint8_t* data, size_t len)
     }
 
     JsonObject schedule = doc["schedule"];
+
+    if (!schedule["id"].is<uint8_t>() || !schedule["h"].is<uint8_t>() ||
+        !schedule["m"].is<uint8_t>() || !schedule["period"].is<uint16_t>() ||
+        !schedule["dow"].is<uint8_t>() || !schedule["zones"].is<uint8_t>())
+    {
+        return;
+    }
+
     uint8_t id = schedule["id"].as<uint8_t>();
     uint8_t h = schedule["h"].as<uint8_t>();
     uint8_t m = schedule["m"].as<uint8_t>();
