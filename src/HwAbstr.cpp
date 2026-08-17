@@ -182,23 +182,16 @@ bool HwAbstr_isRtcWake(void)
     return wasRtcWake;
 }
 
-void HwAbstr_GoToDeepSleep(uint32_t sleepSeconds)
+void HwAbstr_GoToDeepSleep(void)
 {
-    Serial.printf("HwAbstr: Going to deep sleep for %lu seconds\n", sleepSeconds);
-
-    /* Set driver pins LOW and hold them through deep sleep.
-       Without hold the GPIOs float → SN7475N enables read HIGH →
-       transparent mode → all zones turn on. */
     HWAbstr_holdDriverPinsForSleep();
 
-    /* Configure RTC alarm as wake source (EXT0 = GPIO level wake) */
-    esp_sleep_enable_ext0_wakeup(HWABSTR_RTC_INTERRUPT_PIN, 0); /* wake on LOW (alarm active) */
+    /* RTC alarm is the primary wake source (set by Scheduler) */
+    esp_sleep_enable_ext0_wakeup(HWABSTR_RTC_INTERRUPT_PIN, 0);
 
-    /* Also enable timer as backup in case RTC alarm was already cleared */
-    esp_sleep_enable_timer_wakeup(sleepSeconds * 1000000ULL);
+    /* Timer backup — wake after fallback period in case RTC alarm was missed */
+    esp_sleep_enable_timer_wakeup(COMMON_SLEEP_FALLBACK_SEC * 1000000ULL);
 
-    /* wasRtcWake is set in HwAbstr_Init() based on actual wake cause,
-       not here — timer wake must set wasRtcWake=false */
     esp_deep_sleep_start();
 }
 

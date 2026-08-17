@@ -48,7 +48,7 @@ extern HW_Driver HW_Driver_arr[HWABSTR_MAX_DRIVERS];
 void HwAbstr_Init(void);
 void HwAbstr_MainFunction(void);
 bool HwAbstr_isRtcWake(void);
-void HwAbstr_GoToDeepSleep(uint32_t sleepSeconds);
+void HwAbstr_GoToDeepSleep(void);
 int HwAbstr_GetBootCount(void);
 
 /* force management — owned by HwAbstr, called from BLE task and main loop */

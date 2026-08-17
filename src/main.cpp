@@ -22,11 +22,8 @@ static bool shouldSleep(void)
 static void goToSleep(void)
 {
     Scheduler_MainFunction();
-    uint32_t sleepSec = Scheduler_GetSecondsUntilNextAlarm();
-    if (sleepSec == 0) sleepSec = SCHEDULER_FALLBACK_SLEEP_SEC;
-
     BleComm_stopAdvertising();
-    HwAbstr_GoToDeepSleep(sleepSec);
+    HwAbstr_GoToDeepSleep();
 }
 
 void setup()
