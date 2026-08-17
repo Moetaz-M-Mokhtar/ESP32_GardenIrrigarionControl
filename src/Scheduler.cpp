@@ -244,16 +244,34 @@ void ScheduleAlarm::evaluateAlarmState(void)
     }
 }
 
-/****************************** global function declaration ****************************/
+/****************************** global function definition ****************************/
 void Scheduler_MainFunction(void)
 {
-    if(ErrM_GetFunctionPermission(ERRM_FUNC_SCHEDULER) == true &&
-       ErrM_GetFunctionPermission(ERRM_FUNC_TIMERCTRL) == true)
+    if(!ErrM_GetFunctionPermission(ERRM_FUNC_SCHEDULER) ||
+       !ErrM_GetFunctionPermission(ERRM_FUNC_TIMERCTRL))
     {
-        Scheduler_updateAlarmStatus();
-        Scheduler_loadNextEvent();
-        Scheduler_updateTaskCompleteAlarm();
+        return;
     }
+
+    /* Pass 1: turn OFF all non-forced drivers.
+       Ensures zones are turned OFF when their alarm ends, even if
+       another alarm for the same zone is still active (pass 2 re-enables). */
+    for (uint8_t i = 0; i < HWABSTR_MAX_DRIVERS; i++)
+    {
+        if (!HW_Driver_arr[i].forced)
+        {
+            HW_Driver_arr[i].pin_OutputLevel = LOW;
+        }
+    }
+
+    /* Pass 2: evaluate all alarms — turn ON active zones */
+    for (uint8_t i = 0; i < SCHEDULER_MAX_ALARMS; i++)
+    {
+        ScheduleAlarm_arr[i].evaluateAlarmState();
+    }
+
+    Scheduler_loadNextEvent();
+    Scheduler_updateTaskCompleteAlarm();
 }
 
 uint32_t Scheduler_GetSecondsUntilNextAlarm(void)
