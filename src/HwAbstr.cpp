@@ -3,7 +3,6 @@
 #include <CfgM.hpp>
 #include <ErrM.hpp>
 #include <BleComm.hpp>
-#include <ClockDrift.hpp>
 #include <esp_sleep.h>
 #include <driver/gpio.h>
 /**************************************** define ***************************************/
@@ -14,8 +13,6 @@
 RTC_DATA_ATTR int bootCount = 0;
 RTC_DATA_ATTR bool wasRtcWake = false;
 
-static bool pairingMode = false;
-static uint32_t pairingStartTime = 0;
 /******************************* local function declaration *****************************/
 
 /****************************** local function definition *****************************/
@@ -33,15 +30,15 @@ static void GPIO_PinModeInit()
        On ESP32, pinMode(OUTPUT) preserves the current pin level.
        This is safe after deep sleep wake — the SN7475N shift register
        maintains its latched output independently. */
-    uint8_t HWDrivers_count = sizeof(HW_Driver_cfg_arr) / sizeof(HW_Driver_cfg);
+    uint8_t HWDrivers_count = sizeof(HW_Driver_arr) / sizeof(HW_Driver);
 
     for (uint8_t loopCounter = 0; loopCounter < HWDrivers_count; loopCounter++)
     {
-        pinMode(HW_Driver_cfg_arr[loopCounter].GPIO_Drive_pinNum, OUTPUT);
+        pinMode(HW_Driver_arr[loopCounter].GPIO_Drive_pinNum, OUTPUT);
 
-        if (HW_Driver_cfg_arr[loopCounter].Solenoid_DriveType == LATCH_SN7475N_DRIVE)
+        if (HW_Driver_arr[loopCounter].Solenoid_DriveType == LATCH_SN7475N_DRIVE)
         {
-            pinMode(HW_Driver_cfg_arr[loopCounter].GPIO_Enable_pinNum, OUTPUT);
+            pinMode(HW_Driver_arr[loopCounter].GPIO_Enable_pinNum, OUTPUT);
         }
     }
 }
@@ -52,20 +49,20 @@ static void GPIO_FullInit()
        Used only on normal reset (not RTC wake) to establish a clean baseline. */
     pinMode(HWABSTR_RTC_INTERRUPT_PIN, INPUT_PULLUP);
 
-    uint8_t HWDrivers_count = sizeof(HW_Driver_cfg_arr) / sizeof(HW_Driver_cfg);
+    uint8_t HWDrivers_count = sizeof(HW_Driver_arr) / sizeof(HW_Driver);
 
     for (uint8_t loopCounter = 0; loopCounter < HWDrivers_count; loopCounter++)
     {
-        pinMode(HW_Driver_cfg_arr[loopCounter].GPIO_Drive_pinNum, OUTPUT);
-        digitalWrite(HW_Driver_cfg_arr[loopCounter].GPIO_Drive_pinNum, LOW);
+        pinMode(HW_Driver_arr[loopCounter].GPIO_Drive_pinNum, OUTPUT);
+        digitalWrite(HW_Driver_arr[loopCounter].GPIO_Drive_pinNum, LOW);
 
-        if (HW_Driver_cfg_arr[loopCounter].Solenoid_DriveType == LATCH_SN7475N_DRIVE)
+        if (HW_Driver_arr[loopCounter].Solenoid_DriveType == LATCH_SN7475N_DRIVE)
         {
-            pinMode(HW_Driver_cfg_arr[loopCounter].GPIO_Enable_pinNum, OUTPUT);
-            digitalWrite(HW_Driver_cfg_arr[loopCounter].GPIO_Enable_pinNum, LOW);
-            digitalWrite(HW_Driver_cfg_arr[loopCounter].GPIO_Enable_pinNum, HIGH);
+            pinMode(HW_Driver_arr[loopCounter].GPIO_Enable_pinNum, OUTPUT);
+            digitalWrite(HW_Driver_arr[loopCounter].GPIO_Enable_pinNum, LOW);
+            digitalWrite(HW_Driver_arr[loopCounter].GPIO_Enable_pinNum, HIGH);
             usleep(1000);
-            digitalWrite(HW_Driver_cfg_arr[loopCounter].GPIO_Enable_pinNum,LOW);
+            digitalWrite(HW_Driver_arr[loopCounter].GPIO_Enable_pinNum,LOW);
             usleep(1000);
         }
     }
@@ -73,18 +70,18 @@ static void GPIO_FullInit()
 
 static void HWAbstr_holdDriverPinsForSleep(void)
 {
-    uint8_t HWDrivers_count = sizeof(HW_Driver_cfg_arr) / sizeof(HW_Driver_cfg);
+    uint8_t HWDrivers_count = sizeof(HW_Driver_arr) / sizeof(HW_Driver);
 
     /* set all data lines LOW and enable pins LOW (latch mode).
        The SN7475N latch holds the last latched states, so zones keep
        their intended state through deep sleep. */
     for (uint8_t loopCounter = 0; loopCounter < HWDrivers_count; loopCounter++)
     {
-        digitalWrite(HW_Driver_cfg_arr[loopCounter].GPIO_Drive_pinNum, LOW);
+        digitalWrite(HW_Driver_arr[loopCounter].GPIO_Drive_pinNum, LOW);
 
-        if (HW_Driver_cfg_arr[loopCounter].Solenoid_DriveType == LATCH_SN7475N_DRIVE)
+        if (HW_Driver_arr[loopCounter].Solenoid_DriveType == LATCH_SN7475N_DRIVE)
         {
-            digitalWrite(HW_Driver_cfg_arr[loopCounter].GPIO_Enable_pinNum, LOW);
+            digitalWrite(HW_Driver_arr[loopCounter].GPIO_Enable_pinNum, LOW);
         }
     }
 
@@ -93,11 +90,11 @@ static void HWAbstr_holdDriverPinsForSleep(void)
        outputs follow floating D inputs (HIGH) → all zones ON. */
     for (uint8_t loopCounter = 0; loopCounter < HWDrivers_count; loopCounter++)
     {
-        gpio_hold_en(HW_Driver_cfg_arr[loopCounter].GPIO_Drive_pinNum);
+        gpio_hold_en(HW_Driver_arr[loopCounter].GPIO_Drive_pinNum);
 
-        if (HW_Driver_cfg_arr[loopCounter].Solenoid_DriveType == LATCH_SN7475N_DRIVE)
+        if (HW_Driver_arr[loopCounter].Solenoid_DriveType == LATCH_SN7475N_DRIVE)
         {
-            gpio_hold_en(HW_Driver_cfg_arr[loopCounter].GPIO_Enable_pinNum);
+            gpio_hold_en(HW_Driver_arr[loopCounter].GPIO_Enable_pinNum);
         }
     }
 
@@ -107,7 +104,7 @@ static void HWAbstr_holdDriverPinsForSleep(void)
 
 static void HWAbstr_releaseDriverPins(void)
 {
-    uint8_t HWDrivers_count = sizeof(HW_Driver_cfg_arr) / sizeof(HW_Driver_cfg);
+    uint8_t HWDrivers_count = sizeof(HW_Driver_arr) / sizeof(HW_Driver);
 
     /* disable deep sleep hold globally, then per-pin.
        Must be called after wake before any digitalWrite, otherwise the
@@ -116,37 +113,13 @@ static void HWAbstr_releaseDriverPins(void)
 
     for (uint8_t loopCounter = 0; loopCounter < HWDrivers_count; loopCounter++)
     {
-        gpio_hold_dis(HW_Driver_cfg_arr[loopCounter].GPIO_Drive_pinNum);
+        gpio_hold_dis(HW_Driver_arr[loopCounter].GPIO_Drive_pinNum);
 
-        if (HW_Driver_cfg_arr[loopCounter].Solenoid_DriveType == LATCH_SN7475N_DRIVE)
+        if (HW_Driver_arr[loopCounter].Solenoid_DriveType == LATCH_SN7475N_DRIVE)
         {
-            gpio_hold_dis(HW_Driver_cfg_arr[loopCounter].GPIO_Enable_pinNum);
+            gpio_hold_dis(HW_Driver_arr[loopCounter].GPIO_Enable_pinNum);
         }
     }
-}
-
-bool HwAbstr_isPairingMode(void)
-{
-    return pairingMode;
-}
-
-void HwAbstr_enterPairingMode(void)
-{
-    if (!pairingMode)
-    {
-        pairingMode = true;
-        pairingStartTime = ClockDrift_getCorrectedTime().unixtime();
-        Serial.println("HwAbstr: Entering pairing mode");
-    }
-}
-
-bool HwAbstr_isPairingTimeout(void)
-{
-    if (!pairingMode) return true;
-    uint32_t elapsed = (ClockDrift_getCorrectedTime().unixtime() - pairingStartTime);
-    Serial.printf("Main: pairing check: elapsed %lu = %lu sec, timeout=%d\n",
-           ClockDrift_getCorrectedTime().unixtime() - pairingStartTime, elapsed, HWABSTR_PAIRING_TIMEOUT_SEC);
-    return (elapsed >= HWABSTR_PAIRING_TIMEOUT_SEC);
 }
 
 bool HwAbstr_isRtcWake(void)
@@ -179,7 +152,7 @@ void HwAbstr_GoToDeepSleep(uint32_t sleepSeconds)
 
 static void HWAbstr_updateGPIOPinStates(void)
 {
-    uint8_t HWDrivers_count = sizeof(HW_Driver_cfg_arr) / sizeof(HW_Driver_cfg);
+    uint8_t HWDrivers_count = sizeof(HW_Driver_arr) / sizeof(HW_Driver);
     bool GPIO_DRIVE_HW_active = false;
 
     /* Process coupled pairs together. Each pair shares an enable pin (SN7475N).
@@ -187,27 +160,27 @@ static void HWAbstr_updateGPIOPinStates(void)
        the correct state for both channels. */
     for (uint8_t i = 0; i < HWDrivers_count; i++)
     {
-        if (HW_Driver_cfg_arr[i].Solenoid_DriveType == GPIO_DRIVE)
+        if (HW_Driver_arr[i].Solenoid_DriveType == GPIO_DRIVE)
         {
-            digitalWrite(HW_Driver_cfg_arr[i].GPIO_Drive_pinNum, HW_Driver_cfg_arr[i].pin_OutputLevel);
-            GPIO_DRIVE_HW_active |= HW_Driver_cfg_arr[i].pin_OutputLevel == HIGH;
+            digitalWrite(HW_Driver_arr[i].GPIO_Drive_pinNum, HW_Driver_arr[i].pin_OutputLevel);
+            GPIO_DRIVE_HW_active |= HW_Driver_arr[i].pin_OutputLevel == HIGH;
         }
-        else if (HW_Driver_cfg_arr[i].Solenoid_DriveType == LATCH_SN7475N_DRIVE)
+        else if (HW_Driver_arr[i].Solenoid_DriveType == LATCH_SN7475N_DRIVE)
         {
-            uint8_t coupledIdx = HW_Driver_cfg_arr[i].coupled_HW_Driver_Idx;
+            uint8_t coupledIdx = HW_Driver_arr[i].coupled_HW_Driver_Idx;
 
             /* process each coupled pair once (lower-numbered driver owns the enable) */
             if (coupledIdx > i && coupledIdx < HWDrivers_count)
             {
                 /* set both data lines from intended states */
-                digitalWrite(HW_Driver_cfg_arr[i].GPIO_Drive_pinNum, HW_Driver_cfg_arr[i].pin_OutputLevel);
-                digitalWrite(HW_Driver_cfg_arr[coupledIdx].GPIO_Drive_pinNum, HW_Driver_cfg_arr[coupledIdx].pin_OutputLevel);
+                digitalWrite(HW_Driver_arr[i].GPIO_Drive_pinNum, HW_Driver_arr[i].pin_OutputLevel);
+                digitalWrite(HW_Driver_arr[coupledIdx].GPIO_Drive_pinNum, HW_Driver_arr[coupledIdx].pin_OutputLevel);
 
                 /* pulse enable latch — both SN7475N channels capture */
                 usleep(1000);
-                digitalWrite(HW_Driver_cfg_arr[i].GPIO_Enable_pinNum, HIGH);
+                digitalWrite(HW_Driver_arr[i].GPIO_Enable_pinNum, HIGH);
                 usleep(1000);
-                digitalWrite(HW_Driver_cfg_arr[i].GPIO_Enable_pinNum, LOW);
+                digitalWrite(HW_Driver_arr[i].GPIO_Enable_pinNum, LOW);
                 usleep(1000);
             }
             /* skip higher-numbered driver in pair — already processed above */
@@ -221,7 +194,7 @@ static void HWAbstr_evaluateforcedStates(void)
 {
     for (uint8_t i = 0; i < CFGM_MAX_DRIVERS; i++)
     {
-        HW_Driver_cfg* driver = &HW_Driver_cfg_arr[i];
+        HW_Driver* driver = &HW_Driver_arr[i];
 
         if (driver->forced)
         {
@@ -265,6 +238,7 @@ void HwAbstr_Init(void)
         if (digitalRead(HWABSTR_PAIRING_BUTTON_PIN) == LOW)
         {
             CfgM_ClearPaired();
+            BleComm_enterPairingMode();
             Serial.println("HwAbstr: Pairing button held - cleared paired state");
         }
 

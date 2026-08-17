@@ -1,6 +1,7 @@
 #include <BleComm.hpp>
 #include <ErrM.hpp>
 #include <CfgM.hpp>
+#include <Scheduler.hpp>
 #include <TimerCtrl.hpp>
 #include <ClockDrift.hpp>
 #include <HwAbstr.hpp>
@@ -58,6 +59,10 @@ static volatile bool alarmsNeedRefresh = false;
 /* JSON serialization buffers — separate for status and alarms to avoid race */
 static char jsonBuffer[1024];
 static char alarmJsonBuffer[1024];
+
+/* pairing mode state — entered on normal reset, 30s window for first BLE connect */
+static bool pairingMode = false;
+static uint32_t pairingStartTime = 0;
 
 /******************************* local function declaration *****************************/
 static void BleComm_debugDump(void);
@@ -296,7 +301,7 @@ void BleComm_Init(void)
     Serial.printf("BLE: Initialized and advertising (MAC: %s)\n",
                   addr.toString().c_str());
 
-    HwAbstr_enterPairingMode();
+    BleComm_enterPairingMode();
 }
 
 void BleComm_mainFunction(void)
@@ -415,7 +420,7 @@ static void BleComm_debugDump(void)
 
     for (uint8_t i = 0; i < CFGM_MAX_ALARMS; i++)
     {
-        ScheduleAlarm_cfg* a = &ScheduleAlarm_cfg_arr[i];
+        ScheduleAlarm* a = &ScheduleAlarm_arr[i];
         if (a->getDow() == 0) continue;
 
         DateTime alarmStart = DateTime(corrected.year(), corrected.month(), corrected.day(),
@@ -432,11 +437,11 @@ static void BleComm_debugDump(void)
 
     for (uint8_t i = 0; i < CFGM_MAX_DRIVERS; i++)
     {
-        HW_Driver_cfg* drv = &HW_Driver_cfg_arr[i];
+        HW_Driver* drv = &HW_Driver_arr[i];
         Serial.printf("  drv[%d] enabled=%d pinLevel=%d forced=%d forceState=%d manual=%d forceActive=%d scheduledOn=%d\n",
                       i, CfgM_IsDriverEnabled(i), drv->pin_OutputLevel,
                       drv->forced, drv->forcedState, manualValveStates[i],
-                      forceActive[i], CfgM_IsDriverScheduledOn(i));
+                      forceActive[i], Scheduler_IsDriverScheduledOn(i));
     }
     Serial.println("=== END DEBUG DUMP ===\n");
 }
@@ -476,7 +481,7 @@ static void BleComm_updateStatus(void)
     doc["drift_ppm"] = drift;
     doc["last_sync"] = lastSync;
     doc["mode"] = manualMode ? "manual" : "automatic";
-    doc["pairing"] = HwAbstr_isPairingMode();
+    doc["pairing"] = BleComm_isPairingMode();
 
     /* valve states - 4 valves. Report EFFECTIVE state:
        forced state always wins, then manual override, then scheduler-intended
@@ -493,7 +498,7 @@ static void BleComm_updateStatus(void)
         }
         else
         {
-            bool scheduledOn = !manualMode && CfgM_IsDriverScheduledOn(i);
+            bool scheduledOn = !manualMode && Scheduler_IsDriverScheduledOn(i);
             effectiveOn = (manualValveStates[i] == 1) || scheduledOn;
         }
         valves.add(effectiveOn ? 1 : 0);
@@ -556,21 +561,21 @@ static void BleComm_updateAlarmsInternal(void)
     uint8_t usedCount = 0;
     for (uint8_t i = 0; i < CFGM_MAX_ALARMS; i++)
     {
-        if (ScheduleAlarm_cfg_arr[i].getDow() == 0) continue;
+        if (ScheduleAlarm_arr[i].getDow() == 0) continue;
 
         JsonArray a = alarms.add<JsonArray>();
         a.add(i);
-        a.add(ScheduleAlarm_cfg_arr[i].getHours());
-        a.add(ScheduleAlarm_cfg_arr[i].getMinutes());
-        a.add(ScheduleAlarm_cfg_arr[i].getPeriod());
-        a.add(ScheduleAlarm_cfg_arr[i].getDow());
-        a.add(ScheduleAlarm_cfg_arr[i].getZones());
+        a.add(ScheduleAlarm_arr[i].getHours());
+        a.add(ScheduleAlarm_arr[i].getMinutes());
+        a.add(ScheduleAlarm_arr[i].getPeriod());
+        a.add(ScheduleAlarm_arr[i].getDow());
+        a.add(ScheduleAlarm_arr[i].getZones());
 
-        HW_Driver_cfg* hw = ScheduleAlarm_cfg_arr[i].getHwDriver();
+        HW_Driver* hw = ScheduleAlarm_arr[i].getHwDriver();
         uint8_t driverIdx = 0xFF;
         for (uint8_t d = 0; d < CFGM_MAX_DRIVERS; d++)
         {
-            if (hw == &HW_Driver_cfg_arr[d])
+            if (hw == &HW_Driver_arr[d])
             {
                 driverIdx = d;
                 break;
@@ -734,7 +739,7 @@ static void BleComm_handleManualControlWrite(const uint8_t* data, size_t len)
 
     manualValveStates[valve] = state;
 
-    HW_Driver_cfg_arr[valve].set_HwState(state ? HIGH : LOW);
+    HW_Driver_arr[valve].set_HwState(state ? HIGH : LOW);
 
     Serial.printf("BLE ManualCtrl: valve %d -> %s\n", valve, state ? "ON" : "OFF");
 }
@@ -778,8 +783,8 @@ static void BleComm_handleDriverConfigWrite(const uint8_t* data, size_t len)
         {
             forceActive[driverId] = false;
             forceState[driverId] = 0;
-            HW_Driver_cfg_arr[driverId].forced = false;
-            HW_Driver_cfg_arr[driverId].forcedState = 0;
+            HW_Driver_arr[driverId].forced = false;
+            HW_Driver_arr[driverId].forcedState = 0;
             BleComm_clearDriverTimer(driverId);
         }
     }
@@ -829,17 +834,17 @@ static void BleComm_handleForceValveWrite(const uint8_t* data, size_t len)
     /* apply to hardware immediately */
     if (force)
     {
-        HW_Driver_cfg_arr[valve].forced = true;
-        HW_Driver_cfg_arr[valve].forcedState = state;
+        HW_Driver_arr[valve].forced = true;
+        HW_Driver_arr[valve].forcedState = state;
 
         BleComm_setDriverTimer(valve, ClockDrift_getCorrectedTime().unixtime(), duration);
 
     }
     else
     {
-        HW_Driver_cfg_arr[valve].forced = false;
-        HW_Driver_cfg_arr[valve].forcedState = 0;
-        HW_Driver_cfg_arr[valve].set_HwState(LOW);          //added to bypass the release not resetting pin to zero
+        HW_Driver_arr[valve].forced = false;
+        HW_Driver_arr[valve].forcedState = 0;
+        HW_Driver_arr[valve].set_HwState(LOW);          //added to bypass the release not resetting pin to zero
         /* clear timer tracking */
         BleComm_clearDriverTimer(valve);
 
@@ -884,9 +889,28 @@ void BleComm_stopAdvertising(void)
     NimBLEDevice::stopAdvertising();
 }
 
+bool BleComm_isPairingMode(void)
+{
+    return pairingMode;
+}
+
+void BleComm_enterPairingMode(void)
+{
+    if (!pairingMode)
+    {
+        pairingMode = true;
+        pairingStartTime = ClockDrift_getCorrectedTime().unixtime();
+        Serial.println("BleComm: Entering pairing mode");
+    }
+}
+
 bool BleComm_isPairingTimeout(void)
 {
-    return HwAbstr_isPairingTimeout();
+    if (!pairingMode) return true;
+    uint32_t elapsed = (ClockDrift_getCorrectedTime().unixtime() - pairingStartTime);
+    Serial.printf("Main: pairing check: elapsed %lu = %lu sec, timeout=%d\n",
+           ClockDrift_getCorrectedTime().unixtime() - pairingStartTime, elapsed, HWABSTR_PAIRING_TIMEOUT_SEC);
+    return (elapsed >= HWABSTR_PAIRING_TIMEOUT_SEC);
 }
 
 void BleComm_setDriverTimer(uint8_t driverId, uint32_t startTime, uint32_t duration)
@@ -908,7 +932,7 @@ void BleComm_clearDriverTimer(uint8_t driverId)
 }
 
 void print_AllDriverDebug(
-    HW_Driver_cfg *drivers,
+    HW_Driver *drivers,
     uint8_t count)
 {
     uint32_t now = ClockDrift_getCorrectedTime().unixtime();
@@ -956,7 +980,7 @@ void print_AllDriverDebug(
             "%7.1fs | "
             "%9.1fs\n",
 
-            // HW_Driver_cfg
+            // HW_Driver
             i,
             drivers[i].GPIO_Drive_pinNum,
             drivers[i].Solenoid_DriveType,
@@ -989,7 +1013,7 @@ void BleComm_checkTimerExpiry(void)
     if (now - lastprintTime >= 5)
     {
         /* code */
-        print_AllDriverDebug(HW_Driver_cfg_arr,4);
+        print_AllDriverDebug(HW_Driver_arr,4);
         lastprintTime = now;
     }
     
@@ -1010,8 +1034,8 @@ void BleComm_checkTimerExpiry(void)
             forceActive[i] = false;
             forceState[i] = 0;
             manualValveStates[i] = 0;
-            HW_Driver_cfg_arr[i].forced = false;
-            HW_Driver_cfg_arr[i].forcedState = 0;
+            HW_Driver_arr[i].forced = false;
+            HW_Driver_arr[i].forcedState = 0;
             BleComm_clearDriverTimer(i);
         }
     }

@@ -14,9 +14,6 @@
 /*********************global function declaration*********************/
 void HwAbstr_Init(void);
 void HwAbstr_MainFunction(void);
-bool HwAbstr_isPairingMode(void);
-void HwAbstr_enterPairingMode(void);
-bool HwAbstr_isPairingTimeout(void);
 bool HwAbstr_isRtcWake(void);
 void HwAbstr_GoToDeepSleep(uint32_t sleepSeconds);
 int HwAbstr_GetBootCount(void);

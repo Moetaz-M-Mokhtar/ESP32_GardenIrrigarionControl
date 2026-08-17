@@ -12,7 +12,7 @@ typedef enum
     LATCH_SN7475N_DECODER
 } driveType_dt;
 
-class HW_Driver_cfg
+class HW_Driver
 {
     public:
     gpio_num_t GPIO_Drive_pinNum;
@@ -22,14 +22,14 @@ class HW_Driver_cfg
     uint8_t coupled_HW_Driver_Idx;
     volatile bool forced;
     volatile uint8_t forcedState;
-    HW_Driver_cfg(gpio_num_t GPIO_Drive_pinNum, \
+    HW_Driver(gpio_num_t GPIO_Drive_pinNum, \
                   driveType_dt Solenoid_DriveType, \
                   gpio_num_t GPIO_Enable_pinNum, \
                   uint8_t coupled_HW_Driver_Idx);
     bool set_HwState(uint8_t state);
 };
 
-class ScheduleAlarm_cfg
+class ScheduleAlarm
 {
     private:
     uint8_t hours;
@@ -37,10 +37,10 @@ class ScheduleAlarm_cfg
     uint16_t period;
     uint8_t dow;
     uint8_t zones;      /* bitmask: bit0=zone0, bit1=zone1, etc. */
-    HW_Driver_cfg* HW_Driver_Data;
+    HW_Driver* HW_Driver_Data;
     public:
-    ScheduleAlarm_cfg(uint8_t h, uint8_t m, uint16_t period, uint8_t dow, uint8_t zones, HW_Driver_cfg* HW_Driver_Data);
-    ~ScheduleAlarm_cfg(void);
+    ScheduleAlarm(uint8_t h, uint8_t m, uint16_t period, uint8_t dow, uint8_t zones, HW_Driver* HW_Driver_Data);
+    ~ScheduleAlarm(void);
     bool nextTriggerTime(uint32_t*);
     bool taskCompleteTime(uint32_t*);
     void evaluateAlarmState(void);
@@ -51,7 +51,7 @@ class ScheduleAlarm_cfg
     uint16_t getPeriod(void) const { return period; }
     uint8_t getDow(void) const { return dow; }
     uint8_t getZones(void) const { return zones; }
-    HW_Driver_cfg* getHwDriver(void) const { return HW_Driver_Data; }
+    HW_Driver* getHwDriver(void) const { return HW_Driver_Data; }
 
     /* setters */
     void setHours(uint8_t h) { hours = h; }
@@ -59,14 +59,14 @@ class ScheduleAlarm_cfg
     void setPeriod(uint16_t p) { period = p; }
     void setDow(uint8_t d) { dow = d; }
     void setZones(uint8_t z) { zones = z; }
-    void setHwDriver(HW_Driver_cfg* d) { HW_Driver_Data = d; }
+    void setHwDriver(HW_Driver* d) { HW_Driver_Data = d; }
 };
 /*********************Global function declarations*********************/
 #define CFGM_MAX_DRIVERS 4
 #define CFGM_MAX_ALARMS  15
 
-extern HW_Driver_cfg HW_Driver_cfg_arr[CFGM_MAX_DRIVERS];
-extern ScheduleAlarm_cfg ScheduleAlarm_cfg_arr[CFGM_MAX_ALARMS];
+extern HW_Driver HW_Driver_arr[CFGM_MAX_DRIVERS];
+extern ScheduleAlarm ScheduleAlarm_arr[CFGM_MAX_ALARMS];
 
 void CfgM_Init(void);
 bool CfgM_SetAlarm(uint8_t alarmId, uint8_t h, uint8_t m, uint16_t period, uint8_t dow, uint8_t zones);
@@ -78,7 +78,6 @@ bool CfgM_SetDriverEnabled(uint8_t driverId, bool enabled);
 void CfgM_SetPairOnNextWake(bool enable);
 void CfgM_SetPaired(void);
 void CfgM_ClearPaired(void);
-bool CfgM_IsDriverScheduledOn(uint8_t driverId);
 void CfgM_MainFunction(void);
 
 #endif /* _CFGM_HPP_ */

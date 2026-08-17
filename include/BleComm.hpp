@@ -30,5 +30,7 @@ bool BleComm_hasActiveForces(void);
 void BleComm_setDriverTimer(uint8_t driverId, uint32_t startTime, uint32_t duration);
 void BleComm_clearDriverTimer(uint8_t driverId);
 void BleComm_checkTimerExpiry(void);
+bool BleComm_isPairingMode(void);
+void BleComm_enterPairingMode(void);
 
 #endif /* _BLECOMM_HPP_ */

@@ -9,5 +9,6 @@
 
 void Scheduler_MainFunction(void);
 uint32_t Scheduler_GetSecondsUntilNextAlarm(void);
+bool Scheduler_IsDriverScheduledOn(uint8_t driverId);
 
 #endif /* _SPRINKLER_SCHEDULER_HPP_ */
