@@ -1,8 +1,8 @@
 /* include files */
+#include <Arduino.h>
 #include <HwAbstr.hpp>
-#include <CfgM.hpp>
 #include <ErrM.hpp>
-#include <BleComm.hpp>
+#include <ClockDrift.hpp>
 #include <esp_sleep.h>
 #include <driver/gpio.h>
 /**************************************** define ***************************************/
@@ -12,6 +12,62 @@
 /****************************** local variable declaration *****************************/
 RTC_DATA_ATTR int bootCount = 0;
 RTC_DATA_ATTR bool wasRtcWake = false;
+
+/* force timer tracking — millis-based for short durations (minutes/hours) */
+static volatile uint32_t forceTimerStart[HWABSTR_MAX_DRIVERS] = {0};
+static volatile uint32_t forceTimerDuration[HWABSTR_MAX_DRIVERS] = {0};
+
+/****************************** global variable definition *****************************/
+HW_Driver HW_Driver_arr[] =
+{
+    HW_Driver(
+        GPIO_NUM_13,                    //GPIO_Drive_pinNum
+        LATCH_SN7475N_DRIVE,            //Solenoid_DriveType
+        GPIO_NUM_26,                    //GPIO_Enable_pinNum
+        1                               //coupled_HW_Driver_Idx
+    ),
+    HW_Driver(
+        GPIO_NUM_15,                    //GPIO_Drive_pinNum
+        LATCH_SN7475N_DRIVE,            //Solenoid_DriveType
+        GPIO_NUM_26,                    //GPIO_Enable_pinNum
+        0                               //coupled_HW_Driver_Idx
+    ),
+    HW_Driver(
+        GPIO_NUM_13,                    //GPIO_Drive_pinNum
+        LATCH_SN7475N_DRIVE,            //Solenoid_DriveType
+        GPIO_NUM_27,                    //GPIO_Enable_pinNum
+        3                               //coupled_HW_Driver_Idx
+    ),
+    HW_Driver(
+        GPIO_NUM_15,                    //GPIO_Drive_pinNum
+        LATCH_SN7475N_DRIVE,            //Solenoid_DriveType
+        GPIO_NUM_27,                    //GPIO_Enable_pinNum
+        2                               //coupled_HW_Driver_Idx
+    ),
+};
+
+/****************************** global function definition ****************************/
+HW_Driver::HW_Driver(gpio_num_t GPIO_Drive_pinNum, driveType_dt Solenoid_DriveType, gpio_num_t GPIO_Enable_pinNum, uint8_t coupled_HW_Driver_Idx)
+                        :GPIO_Drive_pinNum(GPIO_Drive_pinNum), Solenoid_DriveType(Solenoid_DriveType), GPIO_Enable_pinNum(GPIO_Enable_pinNum), coupled_HW_Driver_Idx(coupled_HW_Driver_Idx)
+{
+    this->pin_OutputLevel = LOW;
+    this->forced = false;
+    this->forcedState = LOW;
+}
+
+bool HW_Driver::set_HwState(uint8_t state)
+{
+    bool OpStatus = true; 
+    if ((state != LOW) && (state != HIGH))
+    {
+        OpStatus = false;
+    }
+    else
+    {
+        this->pin_OutputLevel = state;
+    }
+    return OpStatus;
+}
 
 /******************************* local function declaration *****************************/
 
@@ -131,9 +187,6 @@ void HwAbstr_GoToDeepSleep(uint32_t sleepSeconds)
 {
     Serial.printf("HwAbstr: Going to deep sleep for %lu seconds\n", sleepSeconds);
 
-    /* Stop BLE advertising before sleep — deep sleep handles BT shutdown */
-    BleComm_stopAdvertising();
-
     /* Set driver pins LOW and hold them through deep sleep.
        Without hold the GPIOs float → SN7475N enables read HIGH →
        transparent mode → all zones turn on. */
@@ -190,17 +243,73 @@ static void HWAbstr_updateGPIOPinStates(void)
     ErrM_SetErrorStatus(ERRM_DIRECT_GPIO_ALARM_ACTIVE, GPIO_DRIVE_HW_active);
 }
 
-static void HWAbstr_evaluateforcedStates(void)
+static void HwAbstr_checkForceExpiry(void)
 {
-    for (uint8_t i = 0; i < CFGM_MAX_DRIVERS; i++)
-    {
-        HW_Driver* driver = &HW_Driver_arr[i];
+    uint32_t now = ClockDrift_getCorrectedTime().unixtime();
 
-        if (driver->forced)
+    for (uint8_t i = 0; i < HWABSTR_MAX_DRIVERS; i++)
+    {
+        if (!HW_Driver_arr[i].forced) continue;
+        if (forceTimerDuration[i] == 0) continue;  /* indefinite force */
+
+        uint32_t elapsed = now - forceTimerStart[i];
+        if (elapsed >= forceTimerDuration[i])
         {
-            driver->set_HwState(driver->forcedState);
+            Serial.printf("HwAbstr: Force expired for driver %d\n", i);
+            HW_Driver_arr[i].forced = false;
+            HW_Driver_arr[i].forcedState = 0;
+            forceTimerStart[i] = 0;
+            forceTimerDuration[i] = 0;
         }
     }
+}
+
+/****************************** global function definition ****************************/
+void HwAbstr_setForce(uint8_t driverId, uint8_t state, uint32_t duration)
+{
+    if (driverId >= HWABSTR_MAX_DRIVERS) return;
+
+    HW_Driver_arr[driverId].forced = true;
+    HW_Driver_arr[driverId].forcedState = state;
+    forceTimerStart[driverId] = ClockDrift_getCorrectedTime().unixtime();
+    forceTimerDuration[driverId] = duration;
+}
+
+void HwAbstr_clearForce(uint8_t driverId)
+{
+    if (driverId >= HWABSTR_MAX_DRIVERS) return;
+
+    HW_Driver_arr[driverId].forced = false;
+    HW_Driver_arr[driverId].forcedState = 0;
+    forceTimerStart[driverId] = 0;
+    forceTimerDuration[driverId] = 0;
+}
+
+bool HwAbstr_isDriverForced(uint8_t driverId)
+{
+    if (driverId >= HWABSTR_MAX_DRIVERS) return false;
+    return HW_Driver_arr[driverId].forced;
+}
+
+bool HwAbstr_hasActiveForces(void)
+{
+    for (uint8_t i = 0; i < HWABSTR_MAX_DRIVERS; i++)
+    {
+        if (HW_Driver_arr[i].forced) return true;
+    }
+    return false;
+}
+
+uint32_t HwAbstr_getForceTimerStart(uint8_t driverId)
+{
+    if (driverId >= HWABSTR_MAX_DRIVERS) return 0;
+    return forceTimerStart[driverId];
+}
+
+uint32_t HwAbstr_getForceTimerDuration(uint8_t driverId)
+{
+    if (driverId >= HWABSTR_MAX_DRIVERS) return 0;
+    return forceTimerDuration[driverId];
 }
 /****************************** global function declaration ****************************/
 void HwAbstr_Init(void)
@@ -230,16 +339,9 @@ void HwAbstr_Init(void)
         Serial.printf("\n------------------ reset %d ------------------\n", bootCount++);
         Serial.println("HwAbstr: Normal power-on/reset");
 
-        /* Pairing mode entry is handled by BleComm_Init() after clock sync */
-
-        /* Check pairing button (active LOW) — forces pairing mode */
+        /* Check pairing button (active LOW) — signals pairing mode request */
         pinMode(HWABSTR_PAIRING_BUTTON_PIN, INPUT_PULLUP);
         delay(50); /* debounce */
-        if (digitalRead(HWABSTR_PAIRING_BUTTON_PIN) == LOW)
-        {
-            BleComm_enterPairingMode();
-            Serial.println("HwAbstr: Pairing button held - entered pairing mode");
-        }
 
         /* Normal reset: full GPIO init — establish known state from scratch */
         GPIO_FullInit();
@@ -249,11 +351,25 @@ void HwAbstr_Init(void)
 
 void HwAbstr_MainFunction(void)
 {
-    HWAbstr_evaluateforcedStates();
+    HwAbstr_checkForceExpiry();
+
+    for (uint8_t i = 0; i < HWABSTR_MAX_DRIVERS; i++)
+    {
+        if (HW_Driver_arr[i].forced)
+        {
+            HW_Driver_arr[i].set_HwState(HW_Driver_arr[i].forcedState);
+        }
+    }
+
     HWAbstr_updateGPIOPinStates();
 }
 
 int HwAbstr_GetBootCount(void)
 {
     return bootCount;
+}
+
+bool HwAbstr_isPairingButtonHeld(void)
+{
+    return (digitalRead(HWABSTR_PAIRING_BUTTON_PIN) == LOW);
 }

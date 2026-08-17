@@ -33,14 +33,6 @@ static NimBLECharacteristic* pForceValveChar = nullptr;
 static std::atomic<BleComm_State> bleState{BLE_STATE_IDLE};
 static std::atomic<uint32_t> lastHeartbeatTime{0};
 
-/* force valve states - for home screen override (NimBLE task writes, main loop reads) */
-static volatile bool forceActive[CFGM_MAX_DRIVERS] = {false, false, false, false};
-static volatile uint8_t forceState[CFGM_MAX_DRIVERS] = {0, 0, 0, 0};
-
-/* timer tracking - for countdown display on zone cards (millis-based) */
-static volatile uint32_t zoneTimerStart[CFGM_MAX_DRIVERS] = {0, 0, 0, 0};
-static volatile uint32_t zoneTimerDuration[CFGM_MAX_DRIVERS] = {0, 0, 0, 0};
-
 /* time sync pending flag — NimBLE task sets, main loop processes */
 static volatile bool timeSyncPending = false;
 static volatile uint32_t pendingSyncTime = 0;
@@ -374,12 +366,12 @@ static void BleComm_updateStatus(void)
        forced state always wins, then scheduler-intended
        state (an alarm is currently within its active window). */
     JsonArray valves = doc["valves"].to<JsonArray>();
-    for (uint8_t i = 0; i < CFGM_MAX_DRIVERS; i++)
+    for (uint8_t i = 0; i < HWABSTR_MAX_DRIVERS; i++)
     {
         bool effectiveOn;
-        if (forceActive[i])
+        if (HW_Driver_arr[i].forced)
         {
-            effectiveOn = (forceState[i] == 1);
+            effectiveOn = (HW_Driver_arr[i].forcedState == 1);
         }
         else
         {
@@ -390,14 +382,14 @@ static void BleComm_updateStatus(void)
 
     /* forced states */
     JsonArray forced = doc["forced"].to<JsonArray>();
-    for (uint8_t i = 0; i < CFGM_MAX_DRIVERS; i++)
+    for (uint8_t i = 0; i < HWABSTR_MAX_DRIVERS; i++)
     {
-        forced.add(forceActive[i] ? 1 : 0);
+        forced.add(HW_Driver_arr[i].forced ? 1 : 0);
     }
 
     /* driver enabled states */
     JsonArray drivers = doc["drivers"].to<JsonArray>();
-    for (uint8_t i = 0; i < CFGM_MAX_DRIVERS; i++)
+    for (uint8_t i = 0; i < HWABSTR_MAX_DRIVERS; i++)
     {
         drivers.add(CfgM_IsDriverEnabled(i) ? 1 : 0);
     }
@@ -405,10 +397,10 @@ static void BleComm_updateStatus(void)
     /* timer arrays - for countdown display */
     JsonArray timerStarts = doc["timer_start"].to<JsonArray>();
     JsonArray timerDurations = doc["timer_duration"].to<JsonArray>();
-    for (uint8_t i = 0; i < CFGM_MAX_DRIVERS; i++)
+    for (uint8_t i = 0; i < HWABSTR_MAX_DRIVERS; i++)
     {
-        timerStarts.add(zoneTimerStart[i]);
-        timerDurations.add(zoneTimerDuration[i]);
+        timerStarts.add(Scheduler_GetAlarmTimerStart(i));
+        timerDurations.add(Scheduler_GetAlarmTimerDuration(i));
     }
 
     /* errors - send actual error IDs */
@@ -443,7 +435,7 @@ static void BleComm_updateAlarmsInternal(void)
     JsonDocument doc;
     JsonArray alarms = doc["a"].to<JsonArray>();
     uint8_t usedCount = 0;
-    for (uint8_t i = 0; i < CFGM_MAX_ALARMS; i++)
+    for (uint8_t i = 0; i < SCHEDULER_MAX_ALARMS; i++)
     {
         if (ScheduleAlarm_arr[i].getDow() == 0) continue;
 
@@ -457,7 +449,7 @@ static void BleComm_updateAlarmsInternal(void)
 
         HW_Driver* hw = ScheduleAlarm_arr[i].getHwDriver();
         uint8_t driverIdx = 0xFF;
-        for (uint8_t d = 0; d < CFGM_MAX_DRIVERS; d++)
+        for (uint8_t d = 0; d < HWABSTR_MAX_DRIVERS; d++)
         {
             if (hw == &HW_Driver_arr[d])
             {
@@ -592,7 +584,7 @@ static void BleComm_handleDriverConfigWrite(const uint8_t* data, size_t len)
     uint8_t driverId = doc["driver"].as<uint8_t>();
     bool enabled = doc["enabled"].as<bool>();
 
-    if (driverId >= CFGM_MAX_DRIVERS)
+    if (driverId >= HWABSTR_MAX_DRIVERS)
     {
         Serial.printf("BLE DriverConfig: invalid driver ID %d\n", driverId);
         return;
@@ -602,13 +594,9 @@ static void BleComm_handleDriverConfigWrite(const uint8_t* data, size_t len)
     if (!enabled)
     {
         /* clear force state so device can sleep */
-        if (forceActive[driverId])
+        if (HW_Driver_arr[driverId].forced)
         {
-            forceActive[driverId] = false;
-            forceState[driverId] = 0;
-            HW_Driver_arr[driverId].forced = false;
-            HW_Driver_arr[driverId].forcedState = 0;
-            BleComm_clearDriverTimer(driverId);
+            HwAbstr_clearForce(driverId);
         }
     }
 
@@ -638,7 +626,7 @@ static void BleComm_handleForceValveWrite(const uint8_t* data, size_t len)
     uint8_t state = doc["state"].as<uint8_t>();
     uint32_t duration = doc["duration"].as<uint32_t>();
 
-    if (valve >= CFGM_MAX_DRIVERS)
+    if (valve >= HWABSTR_MAX_DRIVERS)
     {
         Serial.printf("BLE ForceValve: invalid valve index %d\n", valve);
         return;
@@ -650,48 +638,18 @@ static void BleComm_handleForceValveWrite(const uint8_t* data, size_t len)
         return;
     }
 
-    forceActive[valve] = force;
-    forceState[valve] = state;
-
-    /* apply to hardware immediately */
+    /* delegate to HwAbstr — force state, timer, and GPIO override all managed there */
     if (force)
     {
-        HW_Driver_arr[valve].forced = true;
-        HW_Driver_arr[valve].forcedState = state;
-
-        BleComm_setDriverTimer(valve, ClockDrift_getCorrectedTime().unixtime(), duration);
-
+        HwAbstr_setForce(valve, state, duration);
     }
     else
     {
-        HW_Driver_arr[valve].forced = false;
-        HW_Driver_arr[valve].forcedState = 0;
-        HW_Driver_arr[valve].set_HwState(LOW);          //added to bypass the release not resetting pin to zero
-        /* clear timer tracking */
-        BleComm_clearDriverTimer(valve);
-
+        HwAbstr_clearForce(valve);
     }
 
     Serial.printf("BLE ForceValve: valve %d -> %s (force=%d, duration=%lu)\n",
                    valve, state ? "ON" : "OFF", force, duration);
-}
-
-bool BleComm_isDriverForced(uint8_t driverId)
-{
-    if (driverId >= CFGM_MAX_DRIVERS) return false;
-    return forceActive[driverId];
-}
-
-bool BleComm_hasActiveForces(void)
-{
-    for (uint8_t i = 0; i < CFGM_MAX_DRIVERS; i++)
-    {
-        if (forceActive[i])
-        {
-            return true;
-        }
-    }
-    return false;
 }
 
 void BleComm_startAdvertising(void)
@@ -733,48 +691,4 @@ bool BleComm_isPairingTimeout(void)
     Serial.printf("Main: pairing check: elapsed %lu = %lu sec, timeout=%d\n",
            ClockDrift_getCorrectedTime().unixtime() - pairingStartTime, elapsed, HWABSTR_PAIRING_TIMEOUT_SEC);
     return (elapsed >= HWABSTR_PAIRING_TIMEOUT_SEC);
-}
-
-void BleComm_setDriverTimer(uint8_t driverId, uint32_t startTime, uint32_t duration)
-{
-    if (driverId < CFGM_MAX_DRIVERS)
-    {
-        zoneTimerStart[driverId] = startTime;
-        zoneTimerDuration[driverId] = duration;
-    }
-}
-
-void BleComm_clearDriverTimer(uint8_t driverId)
-{
-    if (driverId < CFGM_MAX_DRIVERS)
-    {
-        zoneTimerStart[driverId] = 0;
-        zoneTimerDuration[driverId] = 0;
-    }
-}
-
-void BleComm_checkTimerExpiry(void)
-{
-    uint32_t now = ClockDrift_getCorrectedTime().unixtime();
-
-    for (uint8_t i = 0; i < CFGM_MAX_DRIVERS; i++)
-    {
-        if (zoneTimerStart[i] == 0 || zoneTimerDuration[i] == 0)
-        {
-            continue;
-        }
-
-        uint32_t elapsed = now - zoneTimerStart[i];
-
-        if (elapsed >= zoneTimerDuration[i])
-        {
-            /* timer expired — auto-off this valve */
-            Serial.printf("BLE: Timer expired for valve %d, turning off\n", i);
-            forceActive[i] = false;
-            forceState[i] = 0;
-            HW_Driver_arr[i].forced = false;
-            HW_Driver_arr[i].forcedState = 0;
-            BleComm_clearDriverTimer(i);
-        }
-    }
 }

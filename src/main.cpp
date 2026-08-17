@@ -18,7 +18,7 @@ static void goToSleep(void)
     }
 
     /* never sleep while forced actions are active */
-    if (BleComm_hasActiveForces())
+    if (HwAbstr_hasActiveForces())
     {
         Serial.println("Main: Active forces prevent deep sleep");
         return;
@@ -29,6 +29,8 @@ static void goToSleep(void)
     uint32_t sleepSec = Scheduler_GetSecondsUntilNextAlarm();
     if (sleepSec == 0) sleepSec = SCHEDULER_FALLBACK_SLEEP_SEC;
     Serial.printf("Main: goToSleep called, next alarm in %lu seconds\n", sleepSec);
+
+    BleComm_stopAdvertising();
     HwAbstr_GoToDeepSleep(sleepSec);
 }
 
@@ -45,6 +47,13 @@ void setup()
     if (!HwAbstr_isRtcWake())
     {
         BleComm_Init();
+
+        /* Check if pairing button was held during boot — enter pairing mode */
+        if (HwAbstr_isPairingButtonHeld())
+        {
+            BleComm_enterPairingMode();
+            Serial.println("Main: Pairing button held - entered pairing mode");
+        }
     }
 }
 
@@ -59,7 +68,6 @@ void loop()
         TimerCtrl_mainFunction();
         Scheduler_MainFunction();
         HwAbstr_MainFunction();
-        BleComm_checkTimerExpiry();
         goToSleep();
     }
     else
@@ -75,7 +83,6 @@ void loop()
             /* BLE connected — handle communication, stay awake.
                Run scheduler so scheduled zones get power even while connected. */
             BleComm_mainFunction();
-            BleComm_checkTimerExpiry();
             Scheduler_MainFunction();
             HwAbstr_MainFunction();
             delay(100);
@@ -84,7 +91,6 @@ void loop()
         {
             Serial.println("Main: pairing timeout path -> goToSleep");
             /* Pairing window expired — check timers, apply GPIO, then sleep or stay awake */
-            BleComm_checkTimerExpiry();
             Scheduler_MainFunction();
             HwAbstr_MainFunction();
             goToSleep();
@@ -99,7 +105,6 @@ void loop()
             BleComm_startAdvertising();
             Scheduler_MainFunction();
             HwAbstr_MainFunction();
-            BleComm_checkTimerExpiry();
             delay(1000);
         }
     }

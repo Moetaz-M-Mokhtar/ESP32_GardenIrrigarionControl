@@ -1,16 +1,47 @@
 /* include files */
 #include<Scheduler.hpp>
-#include<CfgM.hpp>
 #include<TimerCtrl.hpp>
 #include<ClockDrift.hpp>
 #include<ErrM.hpp>
-#include<BleComm.hpp>
 /**************************************** define ***************************************/
 
-/********************************* local type definition *******************************/
-
 /****************************** local variable declaration *****************************/
-static uint8_t prevAlarmState[CFGM_MAX_DRIVERS] = {0, 0, 0, 0};
+static uint8_t prevAlarmState[HWABSTR_MAX_DRIVERS] = {0, 0, 0, 0};
+
+/* alarm countdown display — for zone card timers in the app */
+static volatile uint32_t alarmTimerStart[HWABSTR_MAX_DRIVERS] = {0};
+static volatile uint32_t alarmTimerDuration[HWABSTR_MAX_DRIVERS] = {0};
+
+/****************************** global variable definition *****************************/
+ScheduleAlarm ScheduleAlarm_arr[] =
+{
+    ScheduleAlarm(0, 0, 30, 0, 0, &HW_Driver_arr[0]),
+    ScheduleAlarm(0, 0, 30, 0, 0, &HW_Driver_arr[0]),
+    ScheduleAlarm(0, 0, 30, 0, 0, &HW_Driver_arr[0]),
+    ScheduleAlarm(0, 0, 30, 0, 0, &HW_Driver_arr[0]),
+    ScheduleAlarm(0, 0, 30, 0, 0, &HW_Driver_arr[0]),
+    ScheduleAlarm(0, 0, 30, 0, 0, &HW_Driver_arr[0]),
+    ScheduleAlarm(0, 0, 30, 0, 0, &HW_Driver_arr[0]),
+    ScheduleAlarm(0, 0, 30, 0, 0, &HW_Driver_arr[0]),
+    ScheduleAlarm(0, 0, 30, 0, 0, &HW_Driver_arr[0]),
+    ScheduleAlarm(0, 0, 30, 0, 0, &HW_Driver_arr[0]),
+    ScheduleAlarm(0, 0, 30, 0, 0, &HW_Driver_arr[0]),
+    ScheduleAlarm(0, 0, 30, 0, 0, &HW_Driver_arr[0]),
+    ScheduleAlarm(0, 0, 30, 0, 0, &HW_Driver_arr[0]),
+    ScheduleAlarm(0, 0, 30, 0, 0, &HW_Driver_arr[0]),
+    ScheduleAlarm(0, 0, 30, 0, 0, &HW_Driver_arr[0])
+};
+
+/****************************** global function definition ****************************/
+ScheduleAlarm::ScheduleAlarm(uint8_t h, uint8_t m, uint16_t period, uint8_t dow, uint8_t zones, HW_Driver* HW_Driver_Data)
+                                :hours(h), minutes(m), period(period), dow(dow), zones(zones), HW_Driver_Data(HW_Driver_Data)
+{
+
+}
+
+ScheduleAlarm::~ScheduleAlarm()
+{
+}
 
 /******************************* local function declaration *****************************/
 static bool isDowActive(uint8_t dow, uint8_t rtcDayOfWeek);
@@ -192,8 +223,9 @@ void ScheduleAlarm::evaluateAlarmState(void)
     }
 
     /* apply to each zone in the bitmask — only turn ON, never OFF.
-       OFF is handled by Scheduler turning all non-forced drivers OFF first. */
-    for (uint8_t i = 0; i < CFGM_MAX_DRIVERS; i++)
+       OFF is handled by Scheduler turning all non-forced drivers OFF first.
+       Forced drivers are skipped — HwAbstr overrides their state. */
+    for (uint8_t i = 0; i < HWABSTR_MAX_DRIVERS; i++)
     {
         if ((this->zones & (1 << i)) == 0)
         {
@@ -204,13 +236,12 @@ void ScheduleAlarm::evaluateAlarmState(void)
 
         if (driver->forced)
         {
-            driver->set_HwState(driver->forcedState);
+            continue;  /* HwAbstr will override */
         }
-        else
-        {
-            BleComm_setDriverTimer(i, alarmStartTime.unixtime(), this->period * 60);
-            driver->set_HwState(HIGH);
-        }
+
+        alarmTimerStart[i] = alarmStartTime.unixtime();
+        alarmTimerDuration[i] = this->period * 60;
+        driver->pin_OutputLevel = HIGH;
     }
 }
 
@@ -260,14 +291,14 @@ uint32_t Scheduler_GetSecondsUntilNextAlarm(void)
 
 bool Scheduler_IsDriverScheduledOn(uint8_t driverId)
 {
-    if (driverId >= CFGM_MAX_DRIVERS)
+    if (driverId >= HWABSTR_MAX_DRIVERS)
     {
         return false;
     }
 
     DateTime currentTime = ClockDrift_getCorrectedTime();
 
-    for (uint8_t i = 0; i < CFGM_MAX_ALARMS; i++)
+    for (uint8_t i = 0; i < SCHEDULER_MAX_ALARMS; i++)
     {
         ScheduleAlarm* alarm = &ScheduleAlarm_arr[i];
 
@@ -305,4 +336,15 @@ bool Scheduler_IsDriverScheduledOn(uint8_t driverId)
     return false;
 }
 
+uint32_t Scheduler_GetAlarmTimerStart(uint8_t driverId)
+{
+    if (driverId >= HWABSTR_MAX_DRIVERS) return 0;
+    return alarmTimerStart[driverId];
+}
+
+uint32_t Scheduler_GetAlarmTimerDuration(uint8_t driverId)
+{
+    if (driverId >= HWABSTR_MAX_DRIVERS) return 0;
+    return alarmTimerDuration[driverId];
+}
 

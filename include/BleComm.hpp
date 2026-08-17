@@ -24,11 +24,6 @@ bool BleComm_isPairingTimeout(void);
 void BleComm_disconnect(void);
 void BleComm_startAdvertising(void);
 void BleComm_stopAdvertising(void);
-bool BleComm_isDriverForced(uint8_t driverId);
-bool BleComm_hasActiveForces(void);
-void BleComm_setDriverTimer(uint8_t driverId, uint32_t startTime, uint32_t duration);
-void BleComm_clearDriverTimer(uint8_t driverId);
-void BleComm_checkTimerExpiry(void);
 bool BleComm_isPairingMode(void);
 void BleComm_enterPairingMode(void);
 
