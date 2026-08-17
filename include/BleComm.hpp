@@ -12,6 +12,7 @@
 #define BLE_HEARTBEAT_CHAR_UUID      "ABCDEF04-1234-5678-1234-56789ABCDEF0"
 #define BLE_SCHEDULES_CHAR_UUID      "ABCDEF06-1234-5678-1234-56789ABCDEF0"
 #define BLE_FORCE_VALVE_CHAR_UUID    "ABCDEF07-1234-5678-1234-56789ABCDEF0"
+#define BLE_DEBUG_STREAM_CHAR_UUID   "ABCDEF08-1234-5678-1234-56789ABCDEF0"
 
 /* timeout in seconds (compared against unix epoch) */
 #define BLE_HEARTBEAT_TIMEOUT_SEC  30    /* 30 seconds */
@@ -27,5 +28,6 @@ void BleComm_stopAdvertising(void);
 bool BleComm_isPairingMode(void);
 void BleComm_enterPairingMode(void);
 bool BleComm_isPairingTimeout(void);
+bool BleComm_DebugStreamEnabled(void);
 
 #endif /* _BLECOMM_HPP_ */
