@@ -3,10 +3,9 @@
 #include<TimerCtrl.hpp>
 #include<ClockDrift.hpp>
 #include<ErrM.hpp>
-/**************************************** define ***************************************/
+#include<Common.hpp>
 
 /****************************** local variable declaration *****************************/
-static uint8_t prevAlarmState[HWABSTR_MAX_DRIVERS] = {0, 0, 0, 0};
 
 /* alarm countdown display — for zone card timers in the app */
 static volatile uint32_t alarmTimerStart[HWABSTR_MAX_DRIVERS] = {0};
@@ -181,7 +180,7 @@ bool ScheduleAlarm::taskCompleteTime(uint32_t* unix_time)
                                             currentTime.day(), \
                                             this->hours, \
                                             this->minutes);
-        DateTime alarmEndTime = alarmStartTime + TimeSpan(this->period * 60);
+        DateTime alarmEndTime = alarmStartTime + TimeSpan(this->period * COMMON_SECONDS_PER_MINUTE);
         bool isActive = (currentTime >= alarmStartTime) && (currentTime < alarmEndTime);
 
         if (isActive)
@@ -213,7 +212,7 @@ void ScheduleAlarm::evaluateAlarmState(void)
                                        currentTime.day(), \
                                        this->hours, \
                                        this->minutes);
-    DateTime alarmEndTime = alarmStartTime + TimeSpan(this->period * 60);
+    DateTime alarmEndTime = alarmStartTime + TimeSpan(this->period * COMMON_SECONDS_PER_MINUTE);
     bool isActive = (currentTime >= alarmStartTime) && (currentTime < alarmEndTime);
 
     if (!isActive)
@@ -239,7 +238,7 @@ void ScheduleAlarm::evaluateAlarmState(void)
         }
 
         alarmTimerStart[i] = alarmStartTime.unixtime();
-        alarmTimerDuration[i] = this->period * 60;
+        alarmTimerDuration[i] = this->period * COMMON_SECONDS_PER_MINUTE;
         driver->pin_OutputLevel = HIGH;
     }
 }

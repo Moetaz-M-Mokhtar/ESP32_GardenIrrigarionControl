@@ -1,32 +1,24 @@
 /* include files */
 #include <CfgM.hpp>
 #include <ErrM.hpp>
+#include <Common.hpp>
 #include <Preferences.h>
 /**************************************** define ***************************************/
 #define NVS_NAMESPACE "cfgm"
 #define NVS_KEY_ALARM_INITIALIZED "alarm_init"
-#define NVS_KEY_DRIVER_INITIALIZED "drv_init"
-#define NVS_KEY_DRIVER_ENABLED "drv_en"
-#define NVS_KEY_ALARM_HOURS       "alarm_h"
-#define NVS_KEY_ALARM_MINUTES     "alarm_m"
-#define NVS_KEY_ALARM_PERIOD      "alarm_p"
-#define NVS_KEY_ALARM_DOW         "alarm_d"
-
-/****************************** local variable definition *****************************/
-static volatile bool driverEnabled[HWABSTR_MAX_DRIVERS] = {true, true, true, true};
-static Preferences nvsPrefs;
 
 /****************************** global function definition ****************************/
 void CfgM_Init(void)
 {
+    static Preferences nvsPrefs;
     nvsPrefs.begin(NVS_NAMESPACE, false);
     CfgM_LoadFromNvs();
 }
 
 void CfgM_SaveToNvs(void)
 {
+    static Preferences nvsPrefs;
     nvsPrefs.putBool(NVS_KEY_ALARM_INITIALIZED, true);
-    nvsPrefs.putBool(NVS_KEY_DRIVER_INITIALIZED, true);
 
     for (uint8_t i = 0; i < SCHEDULER_MAX_ALARMS; i++)
     {
@@ -46,31 +38,15 @@ void CfgM_SaveToNvs(void)
         }
         nvsPrefs.putUChar((prefix + "drv").c_str(), driverIdx);
     }
-
-    for (uint8_t i = 0; i < HWABSTR_MAX_DRIVERS; i++)
-    {
-        nvsPrefs.putBool((String(NVS_KEY_DRIVER_ENABLED) + String(i)).c_str(), driverEnabled[i]);
-    }
-
-    Serial.println("CfgM: Configuration saved to NVS");
 }
 
 void CfgM_LoadFromNvs(void)
 {
-    /* Load driver enabled state */
-    if (nvsPrefs.getBool(NVS_KEY_DRIVER_INITIALIZED, false))
-    {
-        for (uint8_t i = 0; i < HWABSTR_MAX_DRIVERS; i++)
-        {
-            driverEnabled[i] = nvsPrefs.getBool((String(NVS_KEY_DRIVER_ENABLED) + String(i)).c_str(), true);
-            Serial.printf("CfgM: Driver %d %s\n", i, driverEnabled[i] ? "enabled" : "disabled");
-        }
-    }
+    static Preferences nvsPrefs;
 
     /* Load alarm configuration */
     if (!nvsPrefs.getBool(NVS_KEY_ALARM_INITIALIZED, false))
     {
-        Serial.println("CfgM: No saved alarms, using defaults");
         return;
     }
 
@@ -84,7 +60,7 @@ void CfgM_LoadFromNvs(void)
         uint8_t z = nvsPrefs.getUChar((prefix + "z").c_str(), ScheduleAlarm_arr[i].getZones());
 
         /* validate loaded values — NVS corruption can produce garbage */
-        if (h < 24 && m < 60 && p >= 15)
+        if (h < 24 && m < 60 && p >= COMMON_MIN_ALARM_PERIOD_MIN)
         {
             ScheduleAlarm_arr[i].setHours(h);
             ScheduleAlarm_arr[i].setMinutes(m);
@@ -99,7 +75,7 @@ void CfgM_LoadFromNvs(void)
         else
         {
             /* corrupted — reset this slot to free */
-            Serial.printf("CfgM: Alarm %d corrupted (h=%d m=%d p=%d d=0x%02X), resetting\n", i, h, m, p, d);
+            Serial.printf("CfgM: Sched %d corrupted (h=%d m=%d p=%d d=0x%02X), reset\n", i, h, m, p, d);
             ErrM_SetErrorStatus(ERRM_NVS_LOAD_CORRUPTED, true);
             ScheduleAlarm_arr[i].setDow(0);
         }
@@ -109,11 +85,7 @@ void CfgM_LoadFromNvs(void)
         if (drv < HWABSTR_MAX_DRIVERS)
         {
             ScheduleAlarm_arr[i].setHwDriver(&HW_Driver_arr[drv]);
-            Serial.printf("CfgM: Alarm %d -> driver %d\n", i, drv);
         }
-
-        Serial.printf("CfgM: Alarm %d loaded: %02d:%02d, period=%d, dow=0x%02X, zones=0x%02X\n",
-                       i, h, m, p, d, z);
     }
 }
 
@@ -121,13 +93,11 @@ bool CfgM_SetAlarm(uint8_t alarmId, uint8_t h, uint8_t m, uint16_t period, uint8
 {
     if (alarmId >= SCHEDULER_MAX_ALARMS)
     {
-        Serial.printf("CfgM: Invalid alarm ID %d\n", alarmId);
         return false;
     }
 
-    if (h >= 24 || m >= 60 || period < 15)
+    if (h >= 24 || m >= 60 || period < COMMON_MIN_ALARM_PERIOD_MIN)
     {
-        Serial.printf("CfgM: Invalid alarm params h=%d m=%d period=%d dow=0x%02X\n", h, m, period, dow);
         return false;
     }
 
@@ -138,10 +108,6 @@ bool CfgM_SetAlarm(uint8_t alarmId, uint8_t h, uint8_t m, uint16_t period, uint8
     ScheduleAlarm_arr[alarmId].setZones(zones);
 
     CfgM_SaveToNvs();
-
-    Serial.printf("CfgM: Alarm %d set to %02d:%02d, period=%d, dow=0x%02X, zones=0x%02X\n",
-                   alarmId, h, m, period, dow, zones);
-
     return true;
 }
 
@@ -149,39 +115,10 @@ bool CfgM_SetAlarmDriver(uint8_t alarmId, uint8_t driverId)
 {
     if (alarmId >= SCHEDULER_MAX_ALARMS || driverId >= HWABSTR_MAX_DRIVERS)
     {
-        Serial.printf("CfgM: Invalid alarm %d or driver %d\n", alarmId, driverId);
         return false;
     }
 
     ScheduleAlarm_arr[alarmId].setHwDriver(&HW_Driver_arr[driverId]);
-
     CfgM_SaveToNvs();
-
-    Serial.printf("CfgM: Alarm %d assigned to driver %d\n", alarmId, driverId);
-    return true;
-}
-
-bool CfgM_IsDriverEnabled(uint8_t driverId)
-{
-    if (driverId >= HWABSTR_MAX_DRIVERS)
-    {
-        return false;
-    }
-    return driverEnabled[driverId];
-}
-
-bool CfgM_SetDriverEnabled(uint8_t driverId, bool enabled)
-{
-    if (driverId >= HWABSTR_MAX_DRIVERS)
-    {
-        Serial.printf("CfgM: Invalid driver ID %d\n", driverId);
-        return false;
-    }
-
-    driverEnabled[driverId] = enabled;
-    
-    CfgM_SaveToNvs();
-    
-    Serial.printf("CfgM: Driver %d %s\n", driverId, enabled ? "enabled" : "disabled");
     return true;
 }

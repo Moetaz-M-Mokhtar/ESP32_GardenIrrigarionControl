@@ -11,7 +11,5 @@ bool CfgM_SetAlarm(uint8_t alarmId, uint8_t h, uint8_t m, uint16_t period, uint8
 bool CfgM_SetAlarmDriver(uint8_t alarmId, uint8_t driverId);
 void CfgM_SaveToNvs(void);
 void CfgM_LoadFromNvs(void);
-bool CfgM_IsDriverEnabled(uint8_t driverId);
-bool CfgM_SetDriverEnabled(uint8_t driverId, bool enabled);
 
 #endif /* _CFGM_HPP_ */

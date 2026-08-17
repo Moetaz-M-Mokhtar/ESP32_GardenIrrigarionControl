@@ -3,10 +3,9 @@
 #include <HwAbstr.hpp>
 #include <ErrM.hpp>
 #include <ClockDrift.hpp>
+#include <Common.hpp>
 #include <esp_sleep.h>
 #include <driver/gpio.h>
-/**************************************** define ***************************************/
-#define HWABSTR_SERIAL_BAUDRATE       9600
 /********************************* local type definition *******************************/
 
 /****************************** local variable declaration *****************************/
@@ -75,7 +74,7 @@ bool HW_Driver::set_HwState(uint8_t state)
 
 static void SerialCommunicationInit()
 {
-    Serial.begin(HWABSTR_SERIAL_BAUDRATE);
+    Serial.begin(COMMON_SERIAL_BAUDRATE);
     delay(100);
 }
  
