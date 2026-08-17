@@ -47,6 +47,7 @@ extern ScheduleAlarm ScheduleAlarm_arr[SCHEDULER_MAX_ALARMS];
 void Scheduler_MainFunction(void);
 uint32_t Scheduler_GetSecondsUntilNextAlarm(void);
 bool Scheduler_IsDriverScheduledOn(uint8_t driverId);
+bool Scheduler_isDowActive(uint8_t dow, uint8_t rtcDayOfWeek);
 
 /* alarm countdown display — for zone card timers in the app */
 uint32_t Scheduler_GetAlarmTimerStart(uint8_t driverId);

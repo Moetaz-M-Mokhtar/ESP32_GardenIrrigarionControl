@@ -44,13 +44,12 @@ ScheduleAlarm::~ScheduleAlarm()
 }
 
 /******************************* local function declaration *****************************/
-static bool isDowActive(uint8_t dow, uint8_t rtcDayOfWeek);
 static void Scheduler_updateAlarmStatus(void);
 static void Scheduler_loadNextEvent(void);
 static void Scheduler_updateTaskCompleteAlarm(void);
 
 /****************************** local function definition *****************************/
-static bool isDowActive(uint8_t dow, uint8_t rtcDayOfWeek)
+bool Scheduler_isDowActive(uint8_t dow, uint8_t rtcDayOfWeek)
 {
     return (dow >> (7 - rtcDayOfWeek)) & 0x01;
 }
@@ -140,7 +139,7 @@ bool ScheduleAlarm::nextTriggerTime(uint32_t* unix_time)
 
     if(this->dow != 0)
     {
-        if(isDowActive(this->dow, AlarmTime.dayOfTheWeek()) &&
+        if(Scheduler_isDowActive(this->dow, AlarmTime.dayOfTheWeek()) &&
             (AlarmTime > currentTime))
         {
             *unix_time = AlarmTime.unixtime();
@@ -152,7 +151,7 @@ bool ScheduleAlarm::nextTriggerTime(uint32_t* unix_time)
             for(uint8_t loopIndex = 0; loopIndex < 7; loopIndex++)
             {
                 AlarmTime = AlarmTime + daySpan;
-                if(isDowActive(this->dow, AlarmTime.dayOfTheWeek()))
+                if(Scheduler_isDowActive(this->dow, AlarmTime.dayOfTheWeek()))
                 {
                     *unix_time = AlarmTime.unixtime();
                     OpStatus = true;
@@ -172,7 +171,7 @@ bool ScheduleAlarm::taskCompleteTime(uint32_t* unix_time)
     {
         DateTime currentTime = ClockDrift_getCorrectedTime();
 
-        if (!isDowActive(this->dow, currentTime.dayOfTheWeek()))
+        if (!Scheduler_isDowActive(this->dow, currentTime.dayOfTheWeek()))
         {
             return false;
         }
@@ -204,7 +203,7 @@ void ScheduleAlarm::evaluateAlarmState(void)
 
     DateTime currentTime = ClockDrift_getCorrectedTime();
 
-    if (!isDowActive(this->dow, currentTime.dayOfTheWeek()))
+    if (!Scheduler_isDowActive(this->dow, currentTime.dayOfTheWeek()))
     {
         return;
     }
@@ -314,7 +313,7 @@ bool Scheduler_IsDriverScheduledOn(uint8_t driverId)
         }
 
         /* check day-of-week */
-        if (!isDowActive(alarm->getDow(), currentTime.dayOfTheWeek()))
+        if (!Scheduler_isDowActive(alarm->getDow(), currentTime.dayOfTheWeek()))
         {
             continue;
         }
