@@ -86,8 +86,6 @@ bool TimerCtrl_Init(void)
     return OpStatus;
 }
 
-static DateTime lastPrintTime = DateTime();
-
 void TimerCtrl_mainFunction(void)
 {
     if(ErrM_GetFunctionPermission(ERRM_FUNC_TIMERCTRL) == true)
@@ -103,15 +101,6 @@ void TimerCtrl_mainFunction(void)
         ErrM_SetErrorStatus(ERRM_RTC_I2C_FAILED, false);
 
         DS3231CurrentTime = reading;
-
-        if ((DS3231CurrentTime.unixtime() - lastPrintTime.unixtime()) >= 5)
-        {
-            TimerCtrl_printDateTime(DS3231CurrentTime);
-            Serial.print("Temperature: ");
-            Serial.print(DS3231Handler.getTemperature());
-            Serial.println(" C");
-            lastPrintTime = DS3231CurrentTime;
-        }
     }
 }
 

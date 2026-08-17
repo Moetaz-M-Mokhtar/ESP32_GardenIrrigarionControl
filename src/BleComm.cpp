@@ -334,23 +334,11 @@ static void BleComm_updateStatus(void)
     }
 
     DateTime corrected = ClockDrift_getCorrectedTime();
-    DateTime raw = TimerCtrl_getCurrentTime();
     float temp = TimerCtrl_getTemperature();
     float drift = ClockDrift_getCoeff();
     uint32_t lastSync = ClockDrift_getLastSyncTime();
 
-    /* time diagnostics: how far has RTC drifted since last sync */
-    uint32_t rawUnix = raw.unixtime();
     uint32_t correctedUnix = corrected.unixtime();
-    int32_t rawDrift = (lastSync > 0) ? (int32_t)(rawUnix - lastSync) : 0;
-    int32_t correctionApplied = (int32_t)(rawUnix - correctedUnix);
-    uint32_t now = ClockDrift_getCorrectedTime().unixtime();
-    uint32_t timeSinceSync = (lastSync > 0) ? (rawUnix - lastSync) : 0;
-
-    Serial.printf("Status: corrected=%lu raw=%lu drift=%.2fppm lastSync=%lu "
-                   "rawDrift=%+dsec corr=%+dsec sinceSync=%lu\n",
-                   correctedUnix, rawUnix, drift, lastSync,
-                   rawDrift, correctionApplied, timeSinceSync);
 
     /* build status JSON */
     JsonDocument doc;
@@ -414,7 +402,6 @@ static void BleComm_updateStatus(void)
     }
 
     size_t len = serializeJson(doc, jsonBuffer, sizeof(jsonBuffer));
-    Serial.printf("BLE: Status JSON %d bytes\n", len);
     if (len >= sizeof(jsonBuffer))
     {
         Serial.println("BLE: Status JSON truncated");
@@ -462,7 +449,6 @@ static void BleComm_updateAlarmsInternal(void)
     }
 
     size_t len = serializeJson(doc, alarmJsonBuffer, sizeof(alarmJsonBuffer));
-    Serial.printf("BLE: Alarms flat %d bytes (%d used)\n", len, usedCount);
     if (len >= sizeof(alarmJsonBuffer))
     {
         Serial.println("BLE: Alarms JSON truncated");
@@ -688,7 +674,5 @@ bool BleComm_isPairingTimeout(void)
 {
     if (!pairingMode) return true;
     uint32_t elapsed = (ClockDrift_getCorrectedTime().unixtime() - pairingStartTime);
-    Serial.printf("Main: pairing check: elapsed %lu = %lu sec, timeout=%d\n",
-           ClockDrift_getCorrectedTime().unixtime() - pairingStartTime, elapsed, HWABSTR_PAIRING_TIMEOUT_SEC);
     return (elapsed >= HWABSTR_PAIRING_TIMEOUT_SEC);
 }
