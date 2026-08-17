@@ -216,6 +216,19 @@ static void HWAbstr_updateGPIOPinStates(void)
 
     ErrM_SetErrorStatus(ERRM_DIRECT_GPIO_ALARM_ACTIVE, GPIO_DRIVE_HW_active);
 }
+
+static void HWAbstr_evaluateforcedStates(void)
+{
+    for (uint8_t i = 0; i < CFGM_MAX_DRIVERS; i++)
+    {
+        HW_Driver_cfg* driver = &HW_Driver_cfg_arr[i];
+
+        if (driver->forced)
+        {
+            driver->set_HwState(driver->forcedState);
+        }
+    }
+}
 /****************************** global function declaration ****************************/
 void HwAbstr_Init(void)
 {
@@ -263,6 +276,7 @@ void HwAbstr_Init(void)
 
 void HwAbstr_MainFunction(void)
 {
+    HWAbstr_evaluateforcedStates();
     HWAbstr_updateGPIOPinStates();
 }
 

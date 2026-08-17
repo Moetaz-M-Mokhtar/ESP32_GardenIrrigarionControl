@@ -13,6 +13,7 @@ void     ClockDrift_Init(void);
 DateTime ClockDrift_getCorrectedTime(void);
 DateTime ClockDrift_correctedToRaw(DateTime targetCorrected);
 void     ClockDrift_syncRTC(uint32_t phoneUnixTime);
+void     ClockDrift_resetDrift(void);
 float    ClockDrift_getCoeff(void);
 uint32_t ClockDrift_getLastSyncTime(void);
 

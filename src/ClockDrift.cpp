@@ -152,6 +152,17 @@ void ClockDrift_syncRTC(uint32_t phoneUnixTime)
     Serial.println("---- TimeSync END ----");
 }
 
+void ClockDrift_resetDrift(void)
+{
+    driftPPM = 0.0f;
+    lastSyncTime = 0;
+
+    nvsPrefs.putFloat(NVS_KEY_DRIFT_COEFF, driftPPM);
+    nvsPrefs.putUInt(NVS_KEY_LAST_SYNC_TIME, lastSyncTime);
+
+    Serial.println("ClockDrift: drift reset (driftPPM=0, lastSyncTime=0)");
+}
+
 float ClockDrift_getCoeff(void)
 {
     return driftPPM;

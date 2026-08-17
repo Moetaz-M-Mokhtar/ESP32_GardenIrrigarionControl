@@ -153,17 +153,28 @@ bool ScheduleAlarm_cfg::taskCompleteTime(uint32_t* unix_time)
 {
     bool OpStatus = false;
 
-    if((this->dow != 0) && \
-        (this->HW_Driver_Data->pin_OutputLevel == HIGH))
+    if(this->dow != 0)
     {
         DateTime currentTime = ClockDrift_getCorrectedTime();
-        DateTime AlarmTime = DateTime(currentTime.year(), \
-                                        currentTime.month(), \
-                                        currentTime.day(), \
-                                        this->hours, \
-                                        this->minutes);
-        *unix_time = (AlarmTime + TimeSpan(this->period * 60)).unixtime();
-        OpStatus = true;
+
+        if (!isDowActive(this->dow, currentTime.dayOfTheWeek()))
+        {
+            return false;
+        }
+
+        DateTime alarmStartTime = DateTime(currentTime.year(), \
+                                            currentTime.month(), \
+                                            currentTime.day(), \
+                                            this->hours, \
+                                            this->minutes);
+        DateTime alarmEndTime = alarmStartTime + TimeSpan(this->period * 60);
+        bool isActive = (currentTime >= alarmStartTime) && (currentTime < alarmEndTime);
+
+        if (isActive)
+        {
+            *unix_time = alarmEndTime.unixtime();
+            OpStatus = true;
+        }
     }
 
     return OpStatus;   

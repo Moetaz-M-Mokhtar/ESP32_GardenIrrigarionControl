@@ -651,6 +651,16 @@ static void BleComm_handleConfigWrite(const uint8_t* data, size_t len)
         return;
     }
 
+    /* handle reset_drift request — clear calibration, force status update */
+    if (doc["action"].is<const char*>() &&
+        strcmp(doc["action"].as<const char*>(), "reset_drift") == 0)
+    {
+        ClockDrift_resetDrift();
+        BleComm_updateStatus();
+        Serial.println("BLE Config: reset_drift processed");
+        return;
+    }
+
     if (!doc["alarm"].is<JsonObject>())
     {
         Serial.println("BLE Config: missing 'alarm' field");
@@ -829,7 +839,7 @@ static void BleComm_handleForceValveWrite(const uint8_t* data, size_t len)
     {
         HW_Driver_cfg_arr[valve].forced = false;
         HW_Driver_cfg_arr[valve].forcedState = 0;
-
+        HW_Driver_cfg_arr[valve].set_HwState(LOW);          //added to bypass the release not resetting pin to zero
         /* clear timer tracking */
         BleComm_clearDriverTimer(valve);
 
