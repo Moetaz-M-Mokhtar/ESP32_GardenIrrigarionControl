@@ -48,7 +48,7 @@ static bool pairingMode = false;
 static uint32_t pairingStartTime = 0;
 
 /* debug stream state — app sends start_debug/stop_debug, ESP32 pushes JSON on interval */
-static bool debugStreamEnabled = false;
+static volatile bool debugStreamEnabled = false;
 static uint32_t lastDebugStreamTime = 0;
 
 /******************************* local function declaration *****************************/
@@ -687,33 +687,6 @@ static void BleComm_updateDebugStream(void)
         }
     }
 
-    /* schedules */
-    JsonArray schedules = doc["schedules"].to<JsonArray>();
-    for (uint8_t i = 0; i < SCHEDULER_MAX_ALARMS; i++)
-    {
-        ScheduleAlarm* a = &ScheduleAlarm_arr[i];
-        if (a->getDow() == 0) continue;
-
-        JsonObject s = schedules.add<JsonObject>();
-        s["id"] = i;
-        s["h"] = a->getHours();
-        s["m"] = a->getMinutes();
-        s["p"] = a->getPeriod();
-
-        /* DOW string: SMTWTFS */
-        char dowBuf[8];
-        const char* labels = "SMTWTFS";
-        for (uint8_t d = 0; d < 7; d++)
-        {
-            dowBuf[d] = (a->getDow() & (1 << (7 - d))) ? labels[d] : '-';
-        }
-        dowBuf[7] = '\0';
-        s["dow"] = dowBuf;
-        s["today"] = Scheduler_isDowActive(a->getDow(), corrected.dayOfTheWeek()) ? 1 : 0;
-        snprintf(buf, sizeof(buf), "0x%02X", a->getZones());
-        s["zones"] = buf;
-    }
-
     /* errors */
     JsonArray errors = doc["errors"].to<JsonArray>();
     for (uint8_t i = 1; i < ERRM_ERROR_COUNT; i++)
@@ -730,6 +703,7 @@ static void BleComm_updateDebugStream(void)
         Serial.println("BLE: Debug JSON truncated");
         return;
     }
+    Serial.printf("BLE: Debug stream %u bytes\n", len);
     pDebugStreamChar->setValue(reinterpret_cast<const uint8_t*>(jsonBuffer), len);
     pDebugStreamChar->notify();
 }
