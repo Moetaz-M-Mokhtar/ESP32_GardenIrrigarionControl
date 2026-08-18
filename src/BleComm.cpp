@@ -642,13 +642,13 @@ static void BleComm_updateDebugStream(void)
              corrected.hour(), corrected.minute(), corrected.second());
     doc["ct"] = buf;
 
-    /* RTC alarms */
+    /* RTC alarms — DS3231 alarm registers don't store year, omit it */
     uint8_t slot = 1;
     for (uint8_t idx = TIMER1_INDEX; idx <= TIMER2_INDEX; idx++, slot++)
     {
         DateTime alarmTime = TimerCtrl_getAlarmTime(idx);
-        snprintf(buf, sizeof(buf), "%04d/%02d/%02d %02d:%02d:%02d",
-                 alarmTime.year(), alarmTime.month(), alarmTime.day(),
+        snprintf(buf, sizeof(buf), "%02d/%02d %02d:%02d:%02d",
+                 alarmTime.month(), alarmTime.day(),
                  alarmTime.hour(), alarmTime.minute(), alarmTime.second());
         char key[8];
         snprintf(key, sizeof(key), "a%d", slot);
