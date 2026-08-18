@@ -601,6 +601,8 @@ static void BleComm_handleDebugStreamWrite(const uint8_t* data, size_t len)
     memcpy(cmdBuf, data, copyLen);
     cmdBuf[copyLen] = '\0';
 
+    Serial.printf("BLE: Debug write received: %s\n", cmdBuf);
+
     JsonDocument doc;
     DeserializationError err = deserializeJson(doc, cmdBuf);
     if (err) return;
@@ -633,68 +635,38 @@ static void BleComm_updateDebugStream(void)
     snprintf(buf, sizeof(buf), "%04d/%02d/%02d %02d:%02d:%02d",
              raw.year(), raw.month(), raw.day(),
              raw.hour(), raw.minute(), raw.second());
-    doc["raw_time"] = buf;
+    doc["rt"] = buf;
 
     snprintf(buf, sizeof(buf), "%04d/%02d/%02d %02d:%02d:%02d",
              corrected.year(), corrected.month(), corrected.day(),
              corrected.hour(), corrected.minute(), corrected.second());
-    doc["corrected_time"] = buf;
-
-    /* sensors */
-    doc["temp"] = TimerCtrl_getTemperature();
-    doc["drift_ppm"] = ClockDrift_getCoeff();
-    uint32_t lastSyncTs = ClockDrift_getLastSyncTime();
-    DateTime lastSync(lastSyncTs);
-    snprintf(buf, sizeof(buf), "%04d/%02d/%02d %02d:%02d:%02d",
-             lastSync.year(), lastSync.month(), lastSync.day(),
-             lastSync.hour(), lastSync.minute(), lastSync.second());
-    doc["last_sync"] = buf;
-
-    /* system */
-    doc["boot"] = HwAbstr_GetBootCount();
-    doc["pairing"] = pairingMode ? "active" : "idle";
+    doc["ct"] = buf;
 
     /* RTC alarms */
-    for (uint8_t idx = TIMER1_INDEX; idx <= TIMER2_INDEX; idx++)
+    uint8_t slot = 1;
+    for (uint8_t idx = TIMER1_INDEX; idx <= TIMER2_INDEX; idx++, slot++)
     {
         DateTime alarmTime = TimerCtrl_getAlarmTime(idx);
         snprintf(buf, sizeof(buf), "%04d/%02d/%02d %02d:%02d:%02d",
                  alarmTime.year(), alarmTime.month(), alarmTime.day(),
                  alarmTime.hour(), alarmTime.minute(), alarmTime.second());
-        char key[16];
-        snprintf(key, sizeof(key), "rtc_alarm%d", idx + 1);
+        char key[8];
+        snprintf(key, sizeof(key), "a%d", slot);
         doc[key] = buf;
     }
 
-    /* drivers */
-    JsonArray drivers = doc["drivers"].to<JsonArray>();
+    /* drivers — compact: [gpio_d, gpio_e, type_char, output, scheduled, force_char] */
+    JsonArray drv = doc["drv"].to<JsonArray>();
     for (uint8_t i = 0; i < HWABSTR_MAX_DRIVERS; i++)
     {
-        HW_Driver* drv = &HW_Driver_arr[i];
-        JsonObject d = drivers.add<JsonObject>();
-        d["gpio_d"] = drv->GPIO_Drive_pinNum;
-        d["gpio_e"] = drv->GPIO_Enable_pinNum;
-        d["type"] = (drv->Solenoid_DriveType == LATCH_SN7475N_DRIVE) ? "E" : "D";
-        d["out"] = drv->pin_OutputLevel;
-        d["sched"] = Scheduler_IsDriverScheduledOn(i) ? 1 : 0;
-        if (drv->forced)
-        {
-            d["force"] = (drv->forcedState == 1) ? "H" : "L";
-        }
-        else
-        {
-            d["force"] = "-";
-        }
-    }
-
-    /* errors */
-    JsonArray errors = doc["errors"].to<JsonArray>();
-    for (uint8_t i = 1; i < ERRM_ERROR_COUNT; i++)
-    {
-        if (ErrM_GetErrorStatus((ErrM_Error_ID)i) == true)
-        {
-            errors.add(i);
-        }
+        HW_Driver* d = &HW_Driver_arr[i];
+        JsonArray slot = drv.add<JsonArray>();
+        slot.add(d->GPIO_Drive_pinNum);
+        slot.add(d->GPIO_Enable_pinNum);
+        slot.add(d->Solenoid_DriveType == LATCH_SN7475N_DRIVE ? "E" : "D");
+        slot.add(d->pin_OutputLevel ? 1 : 0);
+        slot.add(Scheduler_IsDriverScheduledOn(i) ? 1 : 0);
+        slot.add(d->forced ? (d->forcedState == 1 ? "H" : "L") : "-");
     }
 
     size_t len = serializeJson(doc, jsonBuffer, sizeof(jsonBuffer));
