@@ -342,11 +342,11 @@ void HwAbstr_Init(void)
 
     /* Check wake source */
     esp_sleep_wakeup_cause_t cause = esp_sleep_get_wakeup_cause();
-    if (cause == ESP_SLEEP_WAKEUP_EXT0)
+    if ((cause == ESP_SLEEP_WAKEUP_EXT0) || (cause == ESP_SLEEP_WAKEUP_TIMER))
     {
         wasRtcWake = true;
         Serial.printf("\n------------------ rtc wake %d ------------------\n", bootCount++);
-        Serial.println("HwAbstr: Woke from RTC alarm");
+        Serial.println("HwAbstr: Woke from light re-arm (RTC alarm or timer)");
 
         GPIO_PinModeInit();
     }
