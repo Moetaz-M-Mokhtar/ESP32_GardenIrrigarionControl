@@ -45,44 +45,65 @@ ScheduleAlarm::~ScheduleAlarm()
 
 /******************************* local function declaration *****************************/
 static void Scheduler_updateAlarmStatus(void);
-static void Scheduler_loadNextEvent(void);
-static void Scheduler_updateTaskCompleteAlarm(void);
 
 /****************************** local function definition *****************************/
 bool Scheduler_isDowActive(uint8_t dow, uint8_t rtcDayOfWeek)
 {
     return (dow >> (7 - rtcDayOfWeek)) & 0x01;
 }
-static void Scheduler_loadNextEvent(void)
+/**************************************************************
+ * Scheduler_armNextWake:
+ *   Alarm1 = the single next transition (min of next start and
+ *            next completion — the soonest needed wake).
+ *   Alarm2 = Alarm1 + 1 minute (redundant backup edge; the two
+ *            alarms share one SQW/INT pin, so either wakes us).
+ *   Both alarms are re-armed on every wake, so stale/corrupted
+ *            alarm registers self-heal.
+ *************************************************************/
+static void Scheduler_armNextWake(void)
 {
     uint32_t minTimeNextEvent = 0xFFFFFFFF;
-    uint32_t tempTimeOfNextEventAlarm;
+    uint32_t tempTime;
     uint8_t alarmCount = sizeof(ScheduleAlarm_arr) / sizeof(ScheduleAlarm_arr[0]);
-    uint8_t tempReturnValue = 0;
     bool isTimeValid = false;
 
-    
+    /* pass: min over nextTriggerTime (next start) and taskCompleteTime (next completion) */
     for(uint8_t loopIndex = 0; loopIndex < alarmCount; loopIndex++)
     {
-        tempReturnValue = ScheduleAlarm_arr[loopIndex].nextTriggerTime(&tempTimeOfNextEventAlarm);
-        
-        if ((tempReturnValue == true) && \
-            (tempTimeOfNextEventAlarm < minTimeNextEvent))
+        if (ScheduleAlarm_arr[loopIndex].nextTriggerTime(&tempTime) == true)
         {
-            isTimeValid = true;
-            minTimeNextEvent = tempTimeOfNextEventAlarm;
+            if (tempTime < minTimeNextEvent)
+            {
+                isTimeValid = true;
+                minTimeNextEvent = tempTime;
+            }
+        }
+        if (ScheduleAlarm_arr[loopIndex].taskCompleteTime(&tempTime) == true)
+        {
+            if (tempTime < minTimeNextEvent)
+            {
+                isTimeValid = true;
+                minTimeNextEvent = tempTime;
+            }
         }
     }
-    
+
     if(isTimeValid == true)
     {
         DateTime rawAlarm = ClockDrift_correctedToRaw(DateTime(minTimeNextEvent));
         TimerCtrl_setAlarm(TIMER1_INDEX, rawAlarm);
+
+        /* Alarm2 = Alarm1 + 1 minute — redundant edge on the shared INT pin.
+           DS3231 alarm2 matches minutes only (DS3231_A2_Hour); +60 s always
+           lands on the next minute boundary. */
+        DateTime rawAlarm2 = ClockDrift_correctedToRaw(DateTime(minTimeNextEvent + COMMON_SECONDS_PER_MINUTE));
+        TimerCtrl_setAlarm(TIMER2_INDEX, rawAlarm2);
     }
     else
     {
         DateTime correctedFallback = ClockDrift_getCorrectedTime() + TimeSpan(SCHEDULER_FALLBACK_ALARM_SEC);
         TimerCtrl_setAlarm(TIMER1_INDEX, ClockDrift_correctedToRaw(correctedFallback));
+        TimerCtrl_resetAlarm(TIMER2_INDEX);
     }
 }
 
@@ -93,35 +114,6 @@ static void Scheduler_updateAlarmStatus(void)
     for(uint8_t loopIndex = 0; loopIndex < alarmCount; loopIndex++)
     {
         ScheduleAlarm_arr[loopIndex].evaluateAlarmState();
-    }
-}
-
-static void Scheduler_updateTaskCompleteAlarm(void)
-{
-    uint32_t minTaskCompleteTime = 0xFFFFFFFF;
-    uint32_t tempTaskCompleteTime;
-    uint8_t alarmCount = sizeof(ScheduleAlarm_arr) / sizeof(ScheduleAlarm_arr[0]);
-    uint8_t tempReturnValue = 0;
-    bool isTimeValid = false;
-    for(uint8_t loopIndex = 0; loopIndex < alarmCount; loopIndex++)
-    {
-        tempReturnValue = ScheduleAlarm_arr[loopIndex].taskCompleteTime(&tempTaskCompleteTime);
-        if ((tempReturnValue == true) && \
-            (tempTaskCompleteTime < minTaskCompleteTime))
-        {
-            isTimeValid = true;
-            minTaskCompleteTime = tempTaskCompleteTime;
-        }
-    }
-
-    if(isTimeValid == true)
-    {
-        DateTime rawComplete = ClockDrift_correctedToRaw(DateTime(minTaskCompleteTime));
-        TimerCtrl_setAlarm(TIMER2_INDEX, rawComplete);
-    }
-    else
-    {
-        TimerCtrl_resetAlarm(TIMER2_INDEX);
     }
 }
 
@@ -268,8 +260,7 @@ void Scheduler_MainFunction(void)
         ScheduleAlarm_arr[i].evaluateAlarmState();
     }
 
-    Scheduler_loadNextEvent();
-    Scheduler_updateTaskCompleteAlarm();
+    Scheduler_armNextWake();
 }
 
 uint32_t Scheduler_GetSecondsUntilNextAlarm(void)
