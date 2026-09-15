@@ -4,6 +4,7 @@
 #include <ErrM.hpp>
 #include <ClockDrift.hpp>
 #include <Common.hpp>
+#include <Scheduler.hpp>
 #include <esp_sleep.h>
 #include <driver/gpio.h>
 /********************************* local type definition *******************************/
@@ -189,8 +190,18 @@ void HwAbstr_GoToDeepSleep(void)
     /* RTC alarm is the primary wake source (set by Scheduler) */
     esp_sleep_enable_ext0_wakeup(HWABSTR_RTC_INTERRUPT_PIN, 0);
 
-    /* Timer backup — wake after fallback period in case RTC alarm was missed */
-    esp_sleep_enable_timer_wakeup(COMMON_SLEEP_FALLBACK_SEC * 1000000ULL);
+    /* Timer backup — dynamic: 60 s while a zone runs (stop ≤60 s late),
+       15 min when idle (catch missed starts / re-arm) */
+    uint32_t sleepSec = COMMON_SLEEP_IDLE_SEC;
+    for (uint8_t i = 0; i < HWABSTR_MAX_DRIVERS; i++)
+    {
+        if (Scheduler_IsDriverScheduledOn(i))
+        {
+            sleepSec = COMMON_SLEEP_ACTIVE_SEC;
+            break;
+        }
+    }
+    esp_sleep_enable_timer_wakeup(sleepSec * 1000000ULL);
 
     esp_deep_sleep_start();
 }
