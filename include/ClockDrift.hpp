@@ -7,7 +7,8 @@
 /* calibration parameters (spec Section 6, 8) */
 #define CLOCKDRIFT_MIN_CALIBRATION_INTERVAL  64800   /* 18 hours in seconds */
 #define CLOCKDRIFT_MAX_CALIBRATION_ERROR     1800    /* 30 minutes in seconds */
-#define CLOCKDRIFT_MAX_PPM_STEP              50.0f   /* safety clamp per sync */
+#define CLOCKDRIFT_MAX_PPM_STEP              500.0f  /* safety clamp per sync */
+#define CLOCKDRIFT_MAX_PPM                   3000.0f /* hard ceiling on the coefficient */
 
 void     ClockDrift_Init(void);
 DateTime ClockDrift_getCorrectedTime(void);

@@ -28,6 +28,10 @@ void ClockDrift_Init(void)
     lastSyncTime = nvsPrefs.getUInt(NVS_KEY_LAST_SYNC_TIME, 0);
     driftPPM     = nvsPrefs.getFloat(NVS_KEY_DRIFT_COEFF, 0.0f);
 
+    /* bound stale values written by older firmware */
+    if (driftPPM >  CLOCKDRIFT_MAX_PPM)      driftPPM =  CLOCKDRIFT_MAX_PPM;
+    else if (driftPPM < -CLOCKDRIFT_MAX_PPM) driftPPM = -CLOCKDRIFT_MAX_PPM;
+
     if (lastSyncTime > 0)
     {
         Serial.printf("ClockDrift: loaded drift=%.2f ppm, lastSync=%lu\n",
@@ -110,6 +114,10 @@ void ClockDrift_syncRTC(uint32_t phoneUnixTime)
             deltaP = -CLOCKDRIFT_MAX_PPM_STEP;
 
         driftPPM += deltaP;
+
+        /* hard ceiling — a corrupted measurement can never exceed ±3000 PPM */
+        if (driftPPM >  CLOCKDRIFT_MAX_PPM)      driftPPM =  CLOCKDRIFT_MAX_PPM;
+        else if (driftPPM < -CLOCKDRIFT_MAX_PPM) driftPPM = -CLOCKDRIFT_MAX_PPM;
 
         Serial.printf("  clamped deltaP  = %.2f ppm\n", deltaP);
         Serial.printf("  driftPPM (new)  = %.2f ppm\n", driftPPM);
