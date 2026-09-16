@@ -62,11 +62,20 @@ DateTime ClockDrift_correctedToRaw(DateTime targetCorrected)
     if (lastSyncTime == 0)
         return targetCorrected;
 
-    float p  = driftPPM * 1e-6f;
-    float Ta = (float)targetCorrected.unixtime();
-    float T0 = (float)lastSyncTime;
+    /* Use double-precision (or integer + small correction) math: the raw
+       unixtime is ~1.79e9, where a float32 has a 128-second ULP and
+       quantizes alarms onto a 128-s grid (e.g. 18:30:00 -> 18:29:20).
+       Reformulated so the correction (not the full timestamp) is the
+       only non-integer quantity. */
+    int64_t Ta = (int64_t)targetCorrected.unixtime();
+    int64_t T0 = (int64_t)lastSyncTime;
 
-    uint32_t rawAlarm = (uint32_t)((Ta - p * T0) / (1.0f - p));
+    double p = driftPPM * 1e-6;
+
+    /* raw = Ta + p*(Ta - T0)/(1 - p)  (exact rewrite of (Ta-p*T0)/(1-p)) */
+    double corr = p * (double)(Ta - T0) / (1.0 - p);
+
+    uint32_t rawAlarm = (uint32_t)(Ta + (int64_t)llround(corr));
     return DateTime(rawAlarm);
 }
 
