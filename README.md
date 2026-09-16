@@ -4,7 +4,7 @@
 [![Framework: Arduino](https://img.shields.io/badge/framework-Arduino-brightgreen.svg)](https://docs.platformio.org/en/latest/frameworks/arduino.html)
 [![Build: PlatformIO](https://img.shields.io/badge/build-PlatformIO-blue.svg)](https://platformio.org)
 [![BLE: NimBLE](https://img.shields.io/badge/BLE-NimBLE-legacy)](https://github.com/h2zero/NimBLE-Arduino)
-[![License: GPL v3](https://img.shields.io/badge/license-GPLv3-blue.svg)](LICENSE)
+[![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
 
 A low-power, BLE-controlled **smart garden irrigation controller** built on the ESP32. It drives up to 4 solenoid valve drivers on a **latching SN7475N** circuit, keeps time with a **DS3231 RTC**, compensates for clock drift in software, and wakes from **deep sleep** only when watering is actually due.
 
@@ -220,7 +220,7 @@ An AUTOSAR-inspired modular design. Every module has a single responsibility and
 
 ## Companion App
 
-Control panel is a separate **Flutter** project — [aqua_sync_app](../aqua_sync_app) — providing:
+Control panel is a separate **Flutter** project — [**GardenIrrigationRemote**](https://github.com/Moetaz-M-Mokhtar/GardenIrrigationRemote) — providing:
 
 - BLE scanning, connecting, and reconnecting with heartbeat supervision
 - Dashboard with live status, countdown timers, and drift gauge
@@ -229,7 +229,7 @@ Control panel is a separate **Flutter** project — [aqua_sync_app](../aqua_sync
 - One-tap time sync with drift visualization
 - Remote debug stream viewer
 
-The two projects are tightly coupled: the UUIDs above are mirrored in the app's [`BleConstants`](../aqua_sync_app/lib/core/constants/ble_constants.dart).
+The two projects are tightly coupled: the UUIDs above are mirrored in the app's [`BleConstants`](https://github.com/Moetaz-M-Mokhtar/GardenIrrigationRemote/blob/main/lib/core/constants/ble_constants.dart).
 
 ---
 
@@ -360,7 +360,9 @@ If you touch the hardware or scheduling code, follow the rules in the review pro
 
 ## License
 
-[GPL-3.0](LICENSE) — see the [LICENSE](LICENSE) file for details.
+## License
+
+[GNU AGPL-3.0](LICENSE) — see the [LICENSE](LICENSE) file for details.
 
 ---
 
