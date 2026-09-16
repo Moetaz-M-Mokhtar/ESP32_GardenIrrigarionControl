@@ -126,7 +126,7 @@ An AUTOSAR-inspired modular design. Every module has a single responsibility and
       └─────────────────┘
 ```
 
-**Key design rules** (enforced by the [adversarial review protocol](ADVERSARIAL_REVIEW_PROTOCOL.md)):
+**Key design rules** (enforced by the development process):
 
 - **Nothing but HwAbstr touches GPIOs** — all hardware writes go through `set_HwState()`.
 - **Force always wins** — a forced valve stays on even when a schedule says off, until its timer expires.
@@ -332,9 +332,7 @@ All build options and dependencies live in [`platformio.ini`](platformio.ini). M
 ├── src/                # Module implementations + main.cpp
 ├── test/               # PlatformIO tests
 ├── lib/                # Project-local libraries (empty — deps via PlatformIO)
-├── platformio.ini      # Build configuration
-├── REFACTOR_PLAN.md    # Architecture refactor plan (phases 1–6)
-└── ADVERSARIAL_REVIEW_PROTOCOL.md  # Independent review gates for refactors
+└── platformio.ini      # Build configuration
 ```
 
 ### Module RX/TX Rules (dependencies)
@@ -348,17 +346,6 @@ All build options and dependencies live in [`platformio.ini`](platformio.ini). M
 - **BleComm** — binds everything to BLE; defers I2C/GPIO work to the main loop.
 
 ---
-
-## Development Guides
-
-- **[REFACTOR_PLAN.md](REFACTOR_PLAN.md)** — the architecture refactor that produced the current modular design (phases 1–6).
-- **[ADVERSARIAL_REVIEW_PROTOCOL.md](ADVERSARIAL_REVIEW_PROTOCOL.md)** — an independent verification gate: grep + `nm` evidence required before a phase is considered done.
-
-If you touch the hardware or scheduling code, follow the rules in the review protocol (force-override ordering, HwAbstr-only GPIO access, cross-core `volatile` discipline).
-
----
-
-## License
 
 ## License
 
